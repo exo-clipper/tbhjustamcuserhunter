@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+sniper/data/ig_sessionid.txt
+sniper/data/sniper.db*
+sniper/data/sniper_shard_*.db*
+sniper/data/alerts.log
+sniper/data/free_*.txt
+sniper/data/extras.txt

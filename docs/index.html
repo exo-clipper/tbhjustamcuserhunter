@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SNIPER</title>
+<style>
+  :root {
+    --bg: #04060d;
+    --panel: rgba(13, 18, 32, .72);
+    --line: rgba(148, 163, 184, .14);
+    --txt: #e2e8f0;
+    --dim: #64748b;
+    --cyan: #22d3ee;
+    --violet: #a78bfa;
+    --green: #34d399;
+    --amber: #fbbf24;
+    --red: #f87171;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    min-height: 100vh;
+    background:
+      radial-gradient(900px 500px at 85% -10%, rgba(167, 139, 250, .13), transparent 60%),
+      radial-gradient(800px 460px at -10% 15%, rgba(34, 211, 238, .10), transparent 55%),
+      var(--bg);
+    color: var(--txt);
+    font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+  }
+  code, .mono { font-family: ui-monospace, "Cascadia Code", Consolas, Menlo, monospace; }
+
+  /* ---------- gate ---------- */
+  #gate {
+    position: fixed; inset: 0; z-index: 50;
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+    background: inherit;
+  }
+  .gatecard {
+    width: 340px; max-width: 100%;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 34px 28px;
+    backdrop-filter: blur(18px);
+    box-shadow: 0 30px 80px rgba(0, 0, 0, .55);
+    animation: rise .5s ease both;
+  }
+  .gatecard.shake { animation: shake .4s ease; }
+  .logo {
+    display: flex; align-items: center; gap: 10px; justify-content: center;
+    margin-bottom: 6px;
+  }
+  .logo .mark {
+    width: 34px; height: 34px; border-radius: 10px;
+    display: grid; place-items: center;
+    background: linear-gradient(135deg, rgba(34,211,238,.25), rgba(167,139,250,.25));
+    border: 1px solid rgba(34, 211, 238, .35);
+    color: var(--cyan); font-size: 17px;
+  }
+  h1 {
+    font-size: 19px; letter-spacing: .42em; font-weight: 700; text-indent: .42em;
+    background: linear-gradient(90deg, var(--cyan), var(--violet));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .sub { text-align: center; color: var(--dim); font-size: 12px; margin-bottom: 22px; letter-spacing: .08em; }
+  input[type=password] {
+    width: 100%; padding: 13px 15px; border-radius: 12px;
+    border: 1px solid var(--line);
+    background: rgba(2, 6, 17, .6); color: var(--txt);
+    outline: none; font-size: 15px; letter-spacing: .06em;
+    transition: border-color .2s, box-shadow .2s;
+  }
+  input[type=password]:focus {
+    border-color: rgba(34, 211, 238, .55);
+    box-shadow: 0 0 0 3px rgba(34, 211, 238, .12);
+  }
+  button.primary {
+    width: 100%; margin-top: 12px; padding: 13px; border: none; border-radius: 12px;
+    font-weight: 700; letter-spacing: .14em; font-size: 13px; color: #031016;
+    cursor: pointer;
+    background: linear-gradient(90deg, var(--cyan), var(--violet));
+    transition: filter .2s, transform .1s;
+  }
+  button.primary:hover { filter: brightness(1.12); }
+  button.primary:active { transform: scale(.98); }
+  #gateErr { color: var(--red); font-size: 12px; text-align: center; margin-top: 12px; min-height: 15px; }
+
+  /* ---------- app ---------- */
+  #app { max-width: 1080px; margin: 0 auto; padding: 26px 18px 60px; }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap; margin-bottom: 20px;
+  }
+  .brand { display: flex; align-items: center; gap: 11px; }
+  .brand .mark {
+    width: 38px; height: 38px; border-radius: 11px;
+    display: grid; place-items: center; font-size: 18px; color: var(--cyan);
+    background: linear-gradient(135deg, rgba(34,211,238,.22), rgba(167,139,250,.22));
+    border: 1px solid rgba(34, 211, 238, .35);
+    box-shadow: 0 0 24px rgba(34, 211, 238, .18);
+  }
+  .brand h1 { font-size: 17px; }
+  .pill {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 14px; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--panel);
+    font-size: 12px; color: var(--dim);
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
+  .dot.live { background: var(--green); box-shadow: 0 0 0 0 rgba(52, 211, 153, .6); animation: pulse 2s infinite; }
+  .dot.stale { background: var(--amber); }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(52,211,153,.45); }
+    70% { box-shadow: 0 0 0 9px rgba(52,211,153,0); }
+    100% { box-shadow: 0 0 0 0 rgba(52,211,153,0); }
+  }
+
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-bottom: 22px; }
+  .stat {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 16px; padding: 14px 16px; backdrop-filter: blur(14px);
+  }
+  .stat b { display: block; font-size: 22px; margin-top: 3px; }
+  .stat span { font-size: 11px; color: var(--dim); letter-spacing: .12em; text-transform: uppercase; }
+  .stat.free b { color: var(--green); text-shadow: 0 0 18px rgba(52, 211, 153, .45); }
+  .stat.c3 b { color: var(--cyan); }
+  .stat.c4 b { color: var(--violet); }
+
+  nav { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
+  .tab {
+    padding: 10px 18px; border-radius: 12px; cursor: pointer; user-select: none;
+    border: 1px solid var(--line); background: transparent; color: var(--dim);
+    font-size: 13px; font-weight: 600; letter-spacing: .1em;
+    display: flex; gap: 8px; align-items: center;
+    transition: all .18s;
+  }
+  .tab:hover { color: var(--txt); border-color: rgba(148, 163, 184, .3); }
+  .tab.active {
+    color: #06131b;
+    background: linear-gradient(90deg, var(--cyan), var(--violet));
+    border-color: transparent;
+    box-shadow: 0 6px 24px rgba(56, 189, 248, .25);
+  }
+  .tab .cnt {
+    background: rgba(2, 6, 17, .35); border-radius: 999px; padding: 2px 8px; font-size: 11px;
+  }
+  .tab:not(.active) .cnt { background: rgba(148, 163, 184, .12); }
+
+  section[hidden] { display: none; }
+  .grid {
+    display: grid; gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(165px, 1fr));
+  }
+  .card {
+    position: relative;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 16px; padding: 14px 15px;
+    backdrop-filter: blur(14px);
+    animation: rise .35s ease both;
+    transition: transform .16s, border-color .16s, box-shadow .16s;
+    overflow: hidden;
+  }
+  .card::before {
+    content: ""; position: absolute; inset: 0 0 auto 0; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(34,211,238,.7), transparent);
+    opacity: 0; transition: opacity .16s;
+  }
+  .card:hover {
+    transform: translateY(-3px);
+    border-color: rgba(34, 211, 238, .4);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, .45);
+  }
+  .card:hover::before { opacity: 1; }
+  .card .name { font-size: 19px; font-weight: 700; letter-spacing: .02em; word-break: break-all; }
+  .card .len {
+    position: absolute; top: 12px; right: 13px;
+    font-size: 10px; color: var(--dim); border: 1px solid var(--line);
+    padding: 2px 7px; border-radius: 999px; letter-spacing: .1em;
+  }
+  .card.l3 .name { color: var(--cyan); text-shadow: 0 0 22px rgba(34, 211, 238, .35); }
+  .card.l4 .name { color: var(--violet); text-shadow: 0 0 22px rgba(167, 139, 250, .35); }
+  .card .when { color: var(--dim); font-size: 11.5px; margin: 7px 0 11px; }
+  .card .acts { display: flex; gap: 7px; }
+  .card a {
+    flex: 1; text-align: center; text-decoration: none; font-size: 11px; font-weight: 700;
+    letter-spacing: .08em; padding: 7px 0; border-radius: 9px;
+    color: var(--txt); border: 1px solid var(--line);
+    transition: all .15s;
+  }
+  .card a:hover { border-color: rgba(34, 211, 238, .5); color: var(--cyan); }
+  .card a.hot { color: #052e21; border-color: transparent; background: linear-gradient(90deg, var(--green), #a7f3d0); }
+  .card a.hot:hover { color: #052e21; filter: brightness(1.1); }
+
+  .logbox {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+    padding: 8px 0; backdrop-filter: blur(14px);
+  }
+  .lg {
+    display: flex; gap: 12px; padding: 9px 18px; align-items: baseline;
+    border-bottom: 1px dashed rgba(148, 163, 184, .08);
+    font-family: ui-monospace, Consolas, monospace; font-size: 12.5px;
+    animation: rise .3s ease both;
+  }
+  .lg:last-child { border-bottom: none; }
+  .lg .t { color: var(--dim); white-space: nowrap; font-size: 11px; }
+  .lg .m { word-break: break-word; }
+  .lg.free .m { color: var(--green); }
+  .lg.warn .m { color: var(--amber); }
+  .lg.err .m { color: var(--red); }
+  .lg.info .m { color: var(--dim); }
+
+  .empty { color: var(--dim); text-align: center; padding: 48px 0; font-size: 13px; letter-spacing: .08em; }
+  footer { margin-top: 26px; color: var(--dim); font-size: 11px; text-align: center; letter-spacing: .08em; }
+
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes shake { 0%,100%{transform:none} 25%{transform:translateX(-7px)} 75%{transform:translateX(7px)} }
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <div class="gatecard" id="gatecard">
+    <div class="logo"><div class="mark">&#9670;</div><h1>SNIPER</h1></div>
+    <p class="sub">PRIVATE TELEGRAM HANDLE RADAR</p>
+    <input type="password" id="pass" placeholder="passphrase" autocomplete="off">
+    <button class="primary" id="unlock">UNLOCK</button>
+    <div id="gateErr"></div>
+  </div>
+</div>
+
+<div id="app" hidden>
+  <header>
+    <div class="brand"><div class="mark">&#9670;</div><h1>SNIPER</h1></div>
+    <div class="pill"><span class="dot" id="liveDot"></span><span id="liveTxt">connecting&hellip;</span></div>
+  </header>
+
+  <div class="stats">
+    <div class="stat free"><span>free now</span><b id="stFree">&ndash;</b></div>
+    <div class="stat c3"><span>3-letter free</span><b id="st3">&ndash;</b></div>
+    <div class="stat c4"><span>4-letter free</span><b id="st4">&ndash;</b></div>
+    <div class="stat"><span>tracked</span><b id="stTotal">&ndash;</b></div>
+  </div>
+
+  <nav>
+    <div class="tab active" data-t="g3">3&#8209;LETTER <span class="cnt" id="c3">0</span></div>
+    <div class="tab" data-t="g4">4&#8209;LETTER <span class="cnt" id="c4">0</span></div>
+    <div class="tab" data-t="gl">LOGS <span class="cnt" id="cl">0</span></div>
+  </nav>
+
+  <section id="g3"><div class="grid" id="grid3"></div></section>
+  <section id="g4" hidden><div class="grid" id="grid4"></div></section>
+  <section id="gl" hidden><div class="logbox" id="logs"></div></section>
+
+  <footer><span id="footTxt">auto-refreshes every 60s</span></footer>
+</div>
+
+<script>
+"use strict";
+const SHARDS = 20, PBKF_ITER = 120000;
+const $ = id => document.getElementById(id);
+const enc = new TextEncoder();
+
+let RAW = {};
+let KEY = null;
+
+function b64ToBytes(b) {
+  const s = atob(b.replace(/-/g, "+").replace(/_/g, "/"));
+  const out = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+  return out;
+}
+
+async function deriveKey(pass, salt) {
+  const km = await crypto.subtle.importKey("raw", enc.encode(pass), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey(
+    { name: "PBKDF2", salt, iterations: PBKF_ITER, hash: "SHA-256" },
+    km, { name: "AES-CBC", length: 256 }, false, ["decrypt"]
+  );
+}
+
+async function decryptBlob(b64, pass) {
+  const raw = b64ToBytes(b64);
+  const salt = raw.slice(0, 16), iv = raw.slice(16, 32), ct = raw.slice(32);
+  const key = await deriveKey(pass, salt);
+  const pt = await crypto.subtle.decrypt({ name: "AES-CBC", iv }, key, ct);
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+
+function loadShards(cb) {
+  let pending = SHARDS;
+  for (let i = 0; i < SHARDS; i++) {
+    const s = document.createElement("script");
+    s.src = `shard_${i}.data.js?t=${Date.now()}`;
+    s.onload = () => { if (--pending === 0 && cb) cb(); };
+    s.onerror = () => { if (--pending === 0 && cb) cb(); };
+    document.body.appendChild(s);
+  }
+}
+
+function merge() {
+  const frees = new Map();
+  let events = [];
+  let counts = { total: 0, taken: 0, unknown: 0 };
+  let lastChecked = 0;
+  let shardsLive = 0;
+  for (const k of Object.keys(RAW)) {
+    const p = RAW[k];
+    if (!p || typeof p !== "object") continue;
+    shardsLive++;
+    lastChecked = Math.max(lastChecked, p.last_checked || 0, p.generated || 0);
+    for (const f of p.free || []) {
+      const cur = frees.get(f.n);
+      if (!cur || f.t > cur.t) frees.set(f.n, f);
+    }
+    events = events.concat(p.events || []);
+    counts.total += (p.counts && p.counts.total) || 0;
+    counts.taken += (p.counts && p.counts.taken) || 0;
+    counts.unknown += (p.counts && p.counts.unknown) || 0;
+  }
+  return { frees: [...frees.values()].sort((a, b) => b.t - a.t), events, counts, lastChecked, shardsLive };
+}
+
+function rel(ts) {
+  if (!ts) return "?";
+  const d = Date.now() / 1000 - ts;
+  if (d < 90) return Math.max(1, Math.round(d)) + "s ago";
+  if (d < 5400) return Math.round(d / 60) + "m ago";
+  if (d < 172800) return Math.round(d / 3600) + "h ago";
+  return Math.round(d / 86400) + "d ago";
+}
+
+function cardHTML(f) {
+  const frag = f.l < 5
+    ? `<a href="https://fragment.com/username/${f.n}" target="_blank" rel="noopener">FRAGMENT</a>`
+    : "";
+  return `<div class="card l${f.l}">
+    <span class="len">${f.l}-LTR</span>
+    <div class="name mono">@${f.n}</div>
+    <div class="when">free ${rel(f.t)}</div>
+    <div class="acts">
+      <a class="hot" href="https://t.me/${f.n}" target="_blank" rel="noopener">CLAIM &#8599;</a>
+      ${frag}
+    </div>
+  </div>`;
+}
+
+function logClass(m) {
+  if (m.startsWith("became available") || m.startsWith("found")) return "free";
+  if (m.startsWith("breaker")) return "err";
+  if (m.startsWith("throttle")) return "warn";
+  return "info";
+}
+
+function render() {
+  const d = merge();
+  const f3 = d.frees.filter(f => f.l === 3);
+  const f4 = d.frees.filter(f => f.l === 4);
+
+  $("stFree").textContent = d.frees.length;
+  $("st3").textContent = f3.length;
+  $("st4").textContent = f4.length;
+  $("stTotal").textContent = (d.counts.total || 0).toLocaleString();
+  $("c3").textContent = f3.length;
+  $("c4").textContent = f4.length;
+  $("cl").textContent = d.events.length;
+
+  $("grid3").innerHTML = f3.map(cardHTML).join("") ||
+    '<div class="empty" style="grid-column:1/-1">no free 3-letter handles yet &mdash; radar sweeping</div>';
+  $("grid4").innerHTML = f4.map(cardHTML).join("") ||
+    '<div class="empty" style="grid-column:1/-1">no free 4-letter words yet &mdash; radar sweeping</div>';
+
+  const seen = new Set();
+  const logs = [];
+  for (const e of d.events.sort((a, b) => b.ts - a.ts)) {
+    const kk = e.m + "|" + e.n + "|" + e.ts;
+    if (seen.has(kk)) continue;
+    seen.add(kk);
+    logs.push(`<div class="lg ${logClass(e.m)}"><span class="t">${new Date(e.ts * 1000).toLocaleString()}</span><span class="m">${e.m}${e.n ? " @" + e.n : ""}</span></div>`);
+  }
+  $("logs").innerHTML = logs.join("") || '<div class="empty">no activity logged yet</div>';
+
+  const age = Date.now() / 1000 - d.lastChecked;
+  const dot = $("liveDot"), txt = $("liveTxt");
+  if (!d.lastChecked) { txt.textContent = "no data yet"; dot.className = "dot"; }
+  else if (age < 3600) { txt.textContent = `live \u00b7 scanned ${rel(d.lastChecked)} \u00b7 ${d.shardsLive} shard${d.shardsLive === 1 ? "" : "s"}`; dot.className = "dot live"; }
+  else { txt.textContent = `stale \u00b7 last scan ${rel(d.lastChecked)}`; dot.className = "dot stale"; }
+}
+
+function reveal() {
+  $("gate").style.display = "none";
+  $("app").hidden = false;
+  render();
+}
+
+async function tryUnlock(pass, persist) {
+  const blobs = Object.values(window.SNIPER_DATA?.shards || {});
+  if (!blobs.length) { $("gateErr").textContent = "no data published yet"; return false; }
+  try {
+    await decryptBlob(blobs[0], pass);
+  } catch {
+    return false;
+  }
+  KEY = pass;
+  if (persist) localStorage.setItem("snipe_key", pass);
+  for (const [k, b] of Object.entries(window.SNIPER_DATA.shards)) {
+    try { RAW[k] = await decryptBlob(b, pass); } catch { RAW[k] = null; }
+  }
+  reveal();
+  return true;
+}
+
+for (const el of document.querySelectorAll(".tab")) {
+  el.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+    el.classList.add("active");
+    for (const s of ["g3", "g4", "gl"]) $(s).hidden = true;
+    $(el.dataset.t).hidden = false;
+  });
+}
+
+$("unlock").addEventListener("click", async () => {
+  const ok = await tryUnlock($("pass").value, true);
+  if (!ok) {
+    $("gateErr").textContent = "wrong passphrase";
+    const c = $("gatecard");
+    c.classList.remove("shake"); void c.offsetWidth; c.classList.add("shake");
+  }
+});
+$("pass").addEventListener("keydown", e => { if (e.key === "Enter") $("unlock").click(); });
+
+async function boot() {
+  await new Promise(res => loadShards(res));
+  const saved = localStorage.getItem("snipe_key");
+  if (saved && await tryUnlock(saved, false)) return;
+  if (!Object.keys(window.SNIPER_DATA?.shards || {}).length) {
+    $("gateErr").textContent = "no data published yet";
+  }
+}
+boot();
+setInterval(async () => {
+  if (!KEY) return;
+  RAW = {};
+  await new Promise(res => loadShards(res));
+  for (const [k, b] of Object.entries(window.SNIPER_DATA.shards)) {
+    try { RAW[k] = await decryptBlob(b, KEY); } catch {}
+  }
+  render();
+}, 60000);
+</script>
+</body>
+</html>

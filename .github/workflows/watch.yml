@@ -1,0 +1,49 @@
+name: watch
+on:
+  schedule:
+    - cron: "*/20 * * * *"
+  workflow_dispatch: {}
+permissions:
+  contents: write
+jobs:
+  telegram:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+    concurrency:
+      group: watcher-${{ matrix.shard }}
+      cancel-in-progress: false
+    env:
+      SNIPE_DB: sniper/data/sniper_shard_${{ matrix.shard }}.db
+      SHARD_INDEX: ${{ matrix.shard }}
+      SHARD_COUNT: "20"
+      EXTRA_NAMES: ${{ secrets.EXTRA_NAMES }}
+      DASH_PASSPHRASE: ${{ secrets.DASH_PASSPHRASE }}
+      ALERT_NTFY: ${{ secrets.ALERT_NTFY }}
+      ALERT_TG_TOKEN: ${{ secrets.ALERT_TG_TOKEN }}
+      ALERT_TG_CHAT: ${{ secrets.ALERT_TG_CHAT }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - run: pip install aiohttp
+      - run: python main.py init
+      - run: python main.py run --minutes 12 --quiet
+      - run: python main.py export
+      - name: save state
+        run: |
+          git config user.name "watcher"
+          git config user.email "actions@users.noreply.github.com"
+          git add "$SNIPE_DB" "docs/shard_${{ matrix.shard }}.data.js"
+          git diff --cached --quiet || git commit -m "shard ${{ matrix.shard }} state"
+          for i in 1 2 3; do
+            git pull --rebase origin ${GITHUB_REF_NAME} && git push && break
+            sleep $((RANDOM % 20 + 5))
+          done
