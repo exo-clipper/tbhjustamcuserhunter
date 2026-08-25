@@ -4,7 +4,7 @@ on:
     - cron: "*/20 * * * *"
   workflow_dispatch: {}
 permissions:
-  contents: write
+  contents: read
 jobs:
   telegram:
     runs-on: ubuntu-latest
@@ -18,7 +18,7 @@ jobs:
       group: watcher-${{ matrix.shard }}
       cancel-in-progress: false
     env:
-      SNIPE_DB: sniper/data/sniper_shard_${{ matrix.shard }}.db
+      SNIPE_DB: state/sniper_shard_${{ matrix.shard }}.db
       SHARD_INDEX: ${{ matrix.shard }}
       SHARD_COUNT: "20"
       EXTRA_NAMES: ${{ secrets.EXTRA_NAMES }}
@@ -26,6 +26,7 @@ jobs:
       ALERT_NTFY: ${{ secrets.ALERT_NTFY }}
       ALERT_TG_TOKEN: ${{ secrets.ALERT_TG_TOKEN }}
       ALERT_TG_CHAT: ${{ secrets.ALERT_TG_CHAT }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -34,16 +35,65 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
       - run: pip install aiohttp
+      - name: find previous run
+        id: prev
+        continue-on-error: true
+        run: |
+          RID=$(gh api "repos/${{ github.repository }}/actions/workflows/watch.yml/runs?per_page=20" \
+            --jq '[.workflow_runs[] | select(.conclusion=="success")][0].id // ""')
+          echo "run_id=$RID" >> "$GITHUB_OUTPUT"
+      - name: restore state
+        if: steps.prev.outputs.run_id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: state-${{ matrix.shard }}
+          path: state/
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.prev.outputs.run_id }}
       - run: python main.py init
       - run: python main.py run --minutes 12 --quiet
-      - run: python main.py export
-      - name: save state
+      - run: python main.py export --out frag/shard_${{ matrix.shard }}.data.js
+      - name: upload state
+        uses: actions/upload-artifact@v4
+        with:
+          name: state-${{ matrix.shard }}
+          path: state/sniper_shard_${{ matrix.shard }}.db
+          if-no-files-found: ignore
+      - name: upload fragment
+        uses: actions/upload-artifact@v4
+        with:
+          name: frag-${{ matrix.shard }}
+          path: frag/shard_${{ matrix.shard }}.data.js
+          if-no-files-found: ignore
+
+  publish:
+    needs: telegram
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "frag-*"
+          path: frags/
+          merge-multiple: true
+      - name: assemble site
         run: |
-          git config user.name "watcher"
-          git config user.email "actions@users.noreply.github.com"
-          git add "$SNIPE_DB" "docs/shard_${{ matrix.shard }}.data.js"
-          git diff --cached --quiet || git commit -m "shard ${{ matrix.shard }} state"
-          for i in 1 2 3; do
-            git pull --rebase origin ${GITHUB_REF_NAME} && git push && break
-            sleep $((RANDOM % 20 + 5))
-          done
+          mkdir site
+          cp docs/index.html site/
+          cp frags/*.data.js site/ 2>/dev/null || echo "no fragments yet"
+          ls site/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4
