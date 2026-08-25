@@ -354,6 +354,7 @@ function logClass(m) {
 
 function render() {
   const d = merge();
+  const CAP = 400;
   const f3 = d.frees.filter(f => f.l === 3);
   const f4 = d.frees.filter(f => f.l === 4);
 
@@ -365,10 +366,14 @@ function render() {
   $("c4").textContent = f4.length;
   $("cl").textContent = d.events.length;
 
-  $("grid3").innerHTML = f3.map(cardHTML).join("") ||
+  const more = (arr, n) => arr.length > n
+    ? `<div class="empty">+ ${(arr.length - n).toLocaleString()} more &mdash; showing newest ${n}</div>` : "";
+  $("grid3").innerHTML = f3.slice(0, CAP).map(cardHTML).join("") ||
     '<div class="empty" style="grid-column:1/-1">no free 3-letter handles yet &mdash; radar sweeping</div>';
-  $("grid4").innerHTML = f4.map(cardHTML).join("") ||
+  $("grid3").insertAdjacentHTML("beforeend", more(f3, CAP));
+  $("grid4").innerHTML = f4.slice(0, CAP).map(cardHTML).join("") ||
     '<div class="empty" style="grid-column:1/-1">no free 4-letter words yet &mdash; radar sweeping</div>';
+  $("grid4").insertAdjacentHTML("beforeend", more(f4, CAP));
 
   const seen = new Set();
   const logs = [];
