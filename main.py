@@ -48,8 +48,10 @@ def cmd_init(args) -> None:
     idx, cnt = _shard()
     names = _shard_filter(load_names("telegram"), idx, cnt)
     added = store.add_names("telegram", names)
-    print(f"telegram: {len(names):,} watch names ({added:,} new)")
     extras = [n for n in _extra_names() if valid_for("telegram", n)]
+    keep = set(names) | set(extras)
+    pruned = store.prune_missing("telegram", keep)
+    print(f"telegram: {len(names):,} watch names ({added:,} new, {pruned:,} pruned)")
     if extras:
         added = store.add_names("telegram", extras)
         print(f"telegram: {added:,} extra names")

@@ -47,6 +47,19 @@ class Store:
         self.conn.commit()
         return cur.rowcount
 
+    def prune_missing(self, platform: str, keep: set[str]) -> int:
+        rows = self.conn.execute(
+            "SELECT name FROM names WHERE platform = ?", (platform,)
+        ).fetchall()
+        drop = [(r[0],) for r in rows if r[0] not in keep]
+        if drop:
+            self.conn.executemany(
+                "DELETE FROM names WHERE platform = ? AND name = ?",
+                [(platform, n) for (n,) in drop],
+            )
+            self.conn.commit()
+        return len(drop)
+
     def claim(self, platform: str, min_interval: float, limit: int = 1) -> list[str]:
         now = time.time()
         rows = self.conn.execute(

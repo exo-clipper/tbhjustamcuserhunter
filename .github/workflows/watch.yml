@@ -8,7 +8,7 @@ permissions:
 jobs:
   telegram:
     runs-on: ubuntu-latest
-    timeout-minutes: 16
+    timeout-minutes: 12
     strategy:
       fail-fast: false
       max-parallel: 20
@@ -52,7 +52,7 @@ jobs:
           github-token: ${{ github.token }}
           run-id: ${{ steps.prev.outputs.run_id }}
       - run: python main.py init
-      - run: python main.py run --minutes 12 --quiet
+      - run: python main.py run --minutes 8 --quiet
       - run: python main.py export --out frag/shard_${{ matrix.shard }}.data.js
       - name: upload state
         uses: actions/upload-artifact@v4

@@ -7,7 +7,7 @@
 <style>
   :root {
     --bg: #04060d;
-    --panel: rgba(13, 18, 32, .72);
+    --panel: rgba(13, 18, 32, .78);
     --line: rgba(148, 163, 184, .14);
     --txt: #e2e8f0;
     --dim: #64748b;
@@ -22,15 +22,14 @@
   body {
     min-height: 100vh;
     background:
-      radial-gradient(900px 500px at 85% -10%, rgba(167, 139, 250, .13), transparent 60%),
-      radial-gradient(800px 460px at -10% 15%, rgba(34, 211, 238, .10), transparent 55%),
+      radial-gradient(900px 500px at 85% -10%, rgba(167, 139, 250, .12), transparent 60%),
+      radial-gradient(800px 460px at -10% 15%, rgba(34, 211, 238, .09), transparent 55%),
       var(--bg);
     color: var(--txt);
     font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
   }
   code, .mono { font-family: ui-monospace, "Cascadia Code", Consolas, Menlo, monospace; }
 
-  /* ---------- gate ---------- */
   #gate {
     position: fixed; inset: 0; z-index: 50;
     display: flex; align-items: center; justify-content: center; padding: 20px;
@@ -47,10 +46,7 @@
     animation: rise .5s ease both;
   }
   .gatecard.shake { animation: shake .4s ease; }
-  .logo {
-    display: flex; align-items: center; gap: 10px; justify-content: center;
-    margin-bottom: 6px;
-  }
+  .logo { display: flex; align-items: center; gap: 10px; justify-content: center; margin-bottom: 6px; }
   .logo .mark {
     width: 34px; height: 34px; border-radius: 10px;
     display: grid; place-items: center;
@@ -86,7 +82,6 @@
   button.primary:active { transform: scale(.98); }
   #gateErr { color: var(--red); font-size: 12px; text-align: center; margin-top: 12px; min-height: 15px; }
 
-  /* ---------- app ---------- */
   #app { max-width: 1080px; margin: 0 auto; padding: 26px 18px 60px; }
   header {
     display: flex; align-items: center; justify-content: space-between;
@@ -107,7 +102,7 @@
     border: 1px solid var(--line); background: var(--panel);
     font-size: 12px; color: var(--dim);
   }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); flex: none; }
   .dot.live { background: var(--green); box-shadow: 0 0 0 0 rgba(52, 211, 153, .6); animation: pulse 2s infinite; }
   .dot.stale { background: var(--amber); }
   @keyframes pulse {
@@ -119,13 +114,11 @@
   .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-bottom: 22px; }
   .stat {
     background: var(--panel); border: 1px solid var(--line);
-    border-radius: 16px; padding: 14px 16px; backdrop-filter: blur(14px);
+    border-radius: 16px; padding: 14px 16px;
   }
   .stat b { display: block; font-size: 22px; margin-top: 3px; }
   .stat span { font-size: 11px; color: var(--dim); letter-spacing: .12em; text-transform: uppercase; }
   .stat.free b { color: var(--green); text-shadow: 0 0 18px rgba(52, 211, 153, .45); }
-  .stat.c3 b { color: var(--cyan); }
-  .stat.c4 b { color: var(--violet); }
 
   nav { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
   .tab {
@@ -154,32 +147,32 @@
   }
   .card {
     position: relative;
-    background: var(--panel); border: 1px solid var(--line);
+    background: rgba(13, 18, 32, .88);
+    border: 1px solid var(--line);
     border-radius: 16px; padding: 14px 15px;
-    backdrop-filter: blur(14px);
     animation: rise .35s ease both;
     transition: transform .16s, border-color .16s, box-shadow .16s;
     overflow: hidden;
+    content-visibility: auto;
+    contain-intrinsic-size: 96px;
   }
   .card::before {
     content: ""; position: absolute; inset: 0 0 auto 0; height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(34,211,238,.7), transparent);
+    background: linear-gradient(90deg, transparent, rgba(167,139,250,.7), transparent);
     opacity: 0; transition: opacity .16s;
   }
   .card:hover {
     transform: translateY(-3px);
-    border-color: rgba(34, 211, 238, .4);
+    border-color: rgba(167, 139, 250, .45);
     box-shadow: 0 14px 34px rgba(0, 0, 0, .45);
   }
   .card:hover::before { opacity: 1; }
-  .card .name { font-size: 19px; font-weight: 700; letter-spacing: .02em; word-break: break-all; }
+  .card .name { font-size: 19px; font-weight: 700; letter-spacing: .02em; word-break: break-all; color: var(--violet); text-shadow: 0 0 22px rgba(167, 139, 250, .35); }
   .card .len {
     position: absolute; top: 12px; right: 13px;
     font-size: 10px; color: var(--dim); border: 1px solid var(--line);
     padding: 2px 7px; border-radius: 999px; letter-spacing: .1em;
   }
-  .card.l3 .name { color: var(--cyan); text-shadow: 0 0 22px rgba(34, 211, 238, .35); }
-  .card.l4 .name { color: var(--violet); text-shadow: 0 0 22px rgba(167, 139, 250, .35); }
   .card .when { color: var(--dim); font-size: 11.5px; margin: 7px 0 11px; }
   .card .acts { display: flex; gap: 7px; }
   .card a {
@@ -188,22 +181,26 @@
     color: var(--txt); border: 1px solid var(--line);
     transition: all .15s;
   }
-  .card a:hover { border-color: rgba(34, 211, 238, .5); color: var(--cyan); }
-  .card a.hot { color: #052e21; border-color: transparent; background: linear-gradient(90deg, var(--green), #a7f3d0); }
+  .card a:hover { border-color: rgba(167, 139, 250, .5); color: var(--violet); }
+  .card a.hot {
+    color: #052e21; border-color: transparent;
+    background: linear-gradient(90deg, var(--green), #a7f3d0);
+  }
   .card a.hot:hover { color: #052e21; filter: brightness(1.1); }
 
   .logbox {
     background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
-    padding: 8px 0; backdrop-filter: blur(14px);
+    padding: 8px 0;
   }
   .lg {
     display: flex; gap: 12px; padding: 9px 18px; align-items: baseline;
     border-bottom: 1px dashed rgba(148, 163, 184, .08);
     font-family: ui-monospace, Consolas, monospace; font-size: 12.5px;
     animation: rise .3s ease both;
+    content-visibility: auto;
   }
   .lg:last-child { border-bottom: none; }
-  .lg .t { color: var(--dim); white-space: nowrap; font-size: 11px; }
+  .lg .t { color: var(--dim); white-space: nowrap; font-size: 11px; flex: none; }
   .lg .m { word-break: break-word; }
   .lg.free .m { color: var(--green); }
   .lg.warn .m { color: var(--amber); }
@@ -237,19 +234,17 @@
 
   <div class="stats">
     <div class="stat free"><span>free now</span><b id="stFree">&ndash;</b></div>
-    <div class="stat c3"><span>3-letter free</span><b id="st3">&ndash;</b></div>
-    <div class="stat c4"><span>4-letter free</span><b id="st4">&ndash;</b></div>
     <div class="stat"><span>tracked</span><b id="stTotal">&ndash;</b></div>
+    <div class="stat"><span>shards live</span><b id="stShards">&ndash;</b></div>
+    <div class="stat"><span>last scan</span><b id="stScan">&ndash;</b></div>
   </div>
 
   <nav>
-    <div class="tab active" data-t="g3">3&#8209;LETTER <span class="cnt" id="c3">0</span></div>
-    <div class="tab" data-t="g4">4&#8209;LETTER <span class="cnt" id="c4">0</span></div>
+    <div class="tab active" data-t="gfree">FREE <span class="cnt" id="cfree">0</span></div>
     <div class="tab" data-t="gl">LOGS <span class="cnt" id="cl">0</span></div>
   </nav>
 
-  <section id="g3"><div class="grid" id="grid3"></div></section>
-  <section id="g4" hidden><div class="grid" id="grid4"></div></section>
+  <section id="gfree"><div class="grid" id="gridFree"></div></section>
   <section id="gl" hidden><div class="logbox" id="logs"></div></section>
 
   <footer><span id="footTxt">auto-refreshes every 60s</span></footer>
@@ -257,12 +252,13 @@
 
 <script>
 "use strict";
-const SHARDS = 20, PBKF_ITER = 120000;
+const SHARDS = 20, PBKF_ITER = 120000, CARD_CAP = 400, LOG_CAP = 250;
 const $ = id => document.getElementById(id);
 const enc = new TextEncoder();
 
 let RAW = {};
 let KEY = null;
+let scriptTags = [];
 
 function b64ToBytes(b) {
   const s = atob(b.replace(/-/g, "+").replace(/_/g, "/"));
@@ -287,25 +283,38 @@ async function decryptBlob(b64, pass) {
   return JSON.parse(new TextDecoder().decode(pt));
 }
 
-function loadShards(cb) {
-  let pending = SHARDS;
-  for (let i = 0; i < SHARDS; i++) {
-    const s = document.createElement("script");
-    s.src = `shard_${i}.data.js?t=${Date.now()}`;
-    s.onload = () => { if (--pending === 0 && cb) cb(); };
-    s.onerror = () => { if (--pending === 0 && cb) cb(); };
-    document.body.appendChild(s);
-  }
+function loadShards() {
+  return new Promise(res => {
+    scriptTags.forEach(t => t.remove());
+    scriptTags = [];
+    window.SNIPER_DATA = { shards: {} };
+    let pending = SHARDS;
+    for (let i = 0; i < SHARDS; i++) {
+      const s = document.createElement("script");
+      s.src = `shard_${i}.data.js?t=${Date.now()}`;
+      const fin = () => { if (--pending === 0) res(); };
+      s.onload = fin; s.onerror = fin;
+      document.body.appendChild(s);
+      scriptTags.push(s);
+    }
+  });
+}
+
+async function decryptAll() {
+  RAW = {};
+  const entries = Object.entries(window.SNIPER_DATA?.shards || {});
+  await Promise.all(entries.map(async ([k, b]) => {
+    try { RAW[k] = await decryptBlob(b, KEY); } catch { RAW[k] = null; }
+  }));
 }
 
 function merge() {
   const frees = new Map();
   let events = [];
-  let counts = { total: 0, taken: 0, unknown: 0 };
+  let counts = { total: 0 };
   let lastChecked = 0;
   let shardsLive = 0;
-  for (const k of Object.keys(RAW)) {
-    const p = RAW[k];
+  for (const p of Object.values(RAW)) {
     if (!p || typeof p !== "object") continue;
     shardsLive++;
     lastChecked = Math.max(lastChecked, p.last_checked || 0, p.generated || 0);
@@ -315,8 +324,6 @@ function merge() {
     }
     events = events.concat(p.events || []);
     counts.total += (p.counts && p.counts.total) || 0;
-    counts.taken += (p.counts && p.counts.taken) || 0;
-    counts.unknown += (p.counts && p.counts.unknown) || 0;
   }
   return { frees: [...frees.values()].sort((a, b) => b.t - a.t), events, counts, lastChecked, shardsLive };
 }
@@ -331,22 +338,19 @@ function rel(ts) {
 }
 
 function cardHTML(f) {
-  const frag = f.l < 5
-    ? `<a href="https://fragment.com/username/${f.n}" target="_blank" rel="noopener">FRAGMENT</a>`
-    : "";
-  return `<div class="card l${f.l}">
+  return `<div class="card l5">
     <span class="len">${f.l}-LTR</span>
     <div class="name mono">@${f.n}</div>
     <div class="when">free ${rel(f.t)}</div>
     <div class="acts">
       <a class="hot" href="https://t.me/${f.n}" target="_blank" rel="noopener">CLAIM &#8599;</a>
-      ${frag}
+      <a href="https://fragment.com/username/${f.n}" target="_blank" rel="noopener">FRAG</a>
     </div>
   </div>`;
 }
 
 function logClass(m) {
-  if (m.startsWith("became available") || m.startsWith("found")) return "free";
+  if (m.startsWith("became available")) return "free";
   if (m.startsWith("breaker")) return "err";
   if (m.startsWith("throttle")) return "warn";
   return "info";
@@ -354,26 +358,20 @@ function logClass(m) {
 
 function render() {
   const d = merge();
-  const CAP = 400;
-  const f3 = d.frees.filter(f => f.l === 3);
-  const f4 = d.frees.filter(f => f.l === 4);
 
-  $("stFree").textContent = d.frees.length;
-  $("st3").textContent = f3.length;
-  $("st4").textContent = f4.length;
-  $("stTotal").textContent = (d.counts.total || 0).toLocaleString();
-  $("c3").textContent = f3.length;
-  $("c4").textContent = f4.length;
+  $("stFree").textContent = d.frees.length.toLocaleString();
+  $("stTotal").textContent = d.counts.total.toLocaleString();
+  $("stShards").textContent = d.shardsLive || "\u2013";
+  $("stScan").textContent = d.lastChecked ? rel(d.lastChecked) : "\u2013";
+  $("cfree").textContent = d.frees.length;
   $("cl").textContent = d.events.length;
 
-  const more = (arr, n) => arr.length > n
-    ? `<div class="empty">+ ${(arr.length - n).toLocaleString()} more &mdash; showing newest ${n}</div>` : "";
-  $("grid3").innerHTML = f3.slice(0, CAP).map(cardHTML).join("") ||
-    '<div class="empty" style="grid-column:1/-1">no free 3-letter handles yet &mdash; radar sweeping</div>';
-  $("grid3").insertAdjacentHTML("beforeend", more(f3, CAP));
-  $("grid4").innerHTML = f4.slice(0, CAP).map(cardHTML).join("") ||
-    '<div class="empty" style="grid-column:1/-1">no free 4-letter words yet &mdash; radar sweeping</div>';
-  $("grid4").insertAdjacentHTML("beforeend", more(f4, CAP));
+  $("gridFree").innerHTML = d.frees.slice(0, CARD_CAP).map(cardHTML).join("") ||
+    '<div class="empty" style="grid-column:1/-1">nothing free yet &mdash; radar sweeping</div>';
+  if (d.frees.length > CARD_CAP) {
+    $("gridFree").insertAdjacentHTML("beforeend",
+      `<div class="empty" style="grid-column:1/-1">+ ${(d.frees.length - CARD_CAP).toLocaleString()} more &mdash; showing newest ${CARD_CAP}</div>`);
+  }
 
   const seen = new Set();
   const logs = [];
@@ -381,7 +379,8 @@ function render() {
     const kk = e.m + "|" + e.n + "|" + e.ts;
     if (seen.has(kk)) continue;
     seen.add(kk);
-    logs.push(`<div class="lg ${logClass(e.m)}"><span class="t">${new Date(e.ts * 1000).toLocaleString()}</span><span class="m">${e.m}${e.n ? " @" + e.n : ""}</span></div>`);
+    logs.push(`<div class="lg ${logClass(e.m)}"><span class="t">${new Date(e.ts * 1000).toLocaleTimeString()}</span><span class="m">${e.m}${e.n ? " @" + e.n : ""}</span></div>`);
+    if (logs.length >= LOG_CAP) break;
   }
   $("logs").innerHTML = logs.join("") || '<div class="empty">no activity logged yet</div>';
 
@@ -399,18 +398,16 @@ function reveal() {
 }
 
 async function tryUnlock(pass, persist) {
-  const blobs = Object.values(window.SNIPER_DATA?.shards || {});
+  const blobs = Object.keys(window.SNIPER_DATA?.shards || {});
   if (!blobs.length) { $("gateErr").textContent = "no data published yet"; return false; }
   try {
-    await decryptBlob(blobs[0], pass);
+    await decryptBlob(window.SNIPER_DATA.shards[blobs[0]], pass);
   } catch {
     return false;
   }
   KEY = pass;
   if (persist) localStorage.setItem("snipe_key", pass);
-  for (const [k, b] of Object.entries(window.SNIPER_DATA.shards)) {
-    try { RAW[k] = await decryptBlob(b, pass); } catch { RAW[k] = null; }
-  }
+  await decryptAll();
   reveal();
   return true;
 }
@@ -419,7 +416,7 @@ for (const el of document.querySelectorAll(".tab")) {
   el.addEventListener("click", () => {
     document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
     el.classList.add("active");
-    for (const s of ["g3", "g4", "gl"]) $(s).hidden = true;
+    for (const s of ["gfree", "gl"]) $(s).hidden = true;
     $(el.dataset.t).hidden = false;
   });
 }
@@ -434,22 +431,19 @@ $("unlock").addEventListener("click", async () => {
 });
 $("pass").addEventListener("keydown", e => { if (e.key === "Enter") $("unlock").click(); });
 
-async function boot() {
-  await new Promise(res => loadShards(res));
+(async function boot() {
+  await loadShards();
   const saved = localStorage.getItem("snipe_key");
   if (saved && await tryUnlock(saved, false)) return;
   if (!Object.keys(window.SNIPER_DATA?.shards || {}).length) {
     $("gateErr").textContent = "no data published yet";
   }
-}
-boot();
+})();
+
 setInterval(async () => {
   if (!KEY) return;
-  RAW = {};
-  await new Promise(res => loadShards(res));
-  for (const [k, b] of Object.entries(window.SNIPER_DATA.shards)) {
-    try { RAW[k] = await decryptBlob(b, KEY); } catch {}
-  }
+  await loadShards();
+  await decryptAll();
   render();
 }, 60000);
 </script>

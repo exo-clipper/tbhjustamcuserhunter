@@ -5,7 +5,7 @@ DATA = Path(__file__).parent / "data"
 
 PLATFORMS = ("telegram",)
 
-_FILES = ("three.txt", "words4.txt", "extras.txt")
+_FILES = ("five.txt", "extras.txt")
 
 _RULES = {
     # >=3 chars; note: on telegram anything under 5 chars is auctioned via
