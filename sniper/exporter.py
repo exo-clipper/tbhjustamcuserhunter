@@ -19,7 +19,7 @@ def build_payload(store, shard_idx: int) -> dict:
             last_checked = lc
         if avail == 1:
             counts["free"] += 1
-            free.append({"n": name, "t": int(ca), "l": len(name)})
+            free.append({"n": name, "t": int(ca), "c": int(lc), "l": len(name)})
         elif avail == 0:
             counts["taken"] += 1
         else:

@@ -338,10 +338,11 @@ function rel(ts) {
 }
 
 function cardHTML(f) {
+  const confirmed = f.c ? rel(f.c) : rel(f.t);
   return `<div class="card l5">
     <span class="len">${f.l}-LTR</span>
     <div class="name mono">@${f.n}</div>
-    <div class="when">free ${rel(f.t)}</div>
+    <div class="when" title="discovered ${rel(f.t)}">&#10003; confirmed ${confirmed}</div>
     <div class="acts">
       <a class="hot" href="https://t.me/${f.n}" target="_blank" rel="noopener">CLAIM &#8599;</a>
       <a href="https://fragment.com/username/${f.n}" target="_blank" rel="noopener">FRAG</a>
