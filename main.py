@@ -46,6 +46,15 @@ def _shard_filter(names: list[str], idx: int, cnt: int) -> list[str]:
 def cmd_init(args) -> None:
     store = Store(DB_PATH)
     idx, cnt = _shard()
+    # fresh-platform hygiene: drop anything not minecraft (e.g. restored
+    # state from the telegram era) and its stale event log
+    store.conn.execute(
+        "DELETE FROM names WHERE platform != 'minecraft'"
+    )
+    store.conn.execute(
+        "DELETE FROM events WHERE platform != 'minecraft'"
+    )
+    store.conn.commit()
     names = _shard_filter(load_names("minecraft"), idx, cnt)
     hot = load_hot(idx, cnt)
     added = store.add_names("minecraft", names + [n for n in hot if n not in set(names)])

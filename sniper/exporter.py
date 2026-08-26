@@ -12,7 +12,8 @@ def build_payload(store, shard_idx: int) -> dict:
     free = []
     last_checked = 0.0
     for name, avail, lc, ca in conn.execute(
-        "SELECT name, available, last_checked, changed_at FROM names"
+        "SELECT name, available, last_checked, changed_at FROM names "
+        "WHERE platform = 'minecraft'"
     ):
         counts["total"] += 1
         if lc > last_checked:
