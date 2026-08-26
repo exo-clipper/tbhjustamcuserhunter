@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import os
 import random
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -13,7 +14,7 @@ import aiohttp
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 
-from sniper import settings
+from sniper import blocklist, settings
 from sniper.engine import GREEN, PlatformRunner
 from sniper.platforms import CHECKERS
 from sniper.platforms.base import RateLimited
@@ -63,6 +64,8 @@ def cmd_init(args) -> None:
     added = store.add_names("minecraft", names + [n for n in hot if n not in set(names)])
     extras = [n for n in _extra_names() if valid_for("minecraft", n)]
     keep = set(names) | set(hot) | set(extras)
+    # keep never contains a blocked name (valid_for rejects them), so restored
+    # state carrying words a newer blocklist covers gets swept out here
     pruned = store.prune_missing("minecraft", keep)
     print(
         f"minecraft: {len(names) + len(hot):,} watch names "
@@ -74,74 +77,112 @@ def cmd_init(args) -> None:
     print(f"shard {idx}/{cnt}, db {os.path.basename(DB_PATH)}")
 
 
-def _git(args: list[str]) -> subprocess.CompletedProcess:
-    return subprocess.run(["git"] + args, capture_output=True, text=True)
+def _git(args: list[str], cwd: str | None = None) -> subprocess.CompletedProcess:
+    return subprocess.run(["git"] + args, capture_output=True, text=True, cwd=cwd)
 
 
-def git_publish_fragment(src_path: str, idx: int) -> bool:
-    """Force-push this shard's fragment onto the gh-pages branch so the
-    panel updates within a Pages build (~1 min) instead of at cycle end."""
+def _feed_remote() -> str:
+    """Where feed branches are pushed. FEED_REMOTE exists so the push path
+    can be exercised against a local bare repo in tests."""
+    override = os.environ.get("FEED_REMOTE", "")
+    if override:
+        return override
     slug = os.environ.get("GITHUB_REPOSITORY", "")
     token = os.environ.get("GH_TOKEN", "")
     if not slug or not token:
+        return ""
+    return f"https://x-access-token:{token}@github.com/{slug}.git"
+
+
+def push_feed(blob_path: str, idx: int) -> bool:
+    """Force-push this shard's blob onto its own `feed-N` branch so the panel
+    sees it within seconds instead of waiting for a Pages build.
+
+    Done in a throwaway repo, never in the runner's checkout: switching
+    branches in-place would delete main.py and sniper/ out from under the
+    watcher that is running. One branch per shard means the push is always a
+    force-push of a single fresh commit, so 18 shards never race each other.
+    """
+    url = _feed_remote()
+    if not url:
         return False
-    url = f"https://x-access-token:{token}@github.com/{slug}.git"
-    name = f"shard_{idx}.data.js"
+    branch = settings.FEED_BRANCH.format(idx=idx)
+    ident = [
+        "-c", "user.name=sniper-bot",
+        "-c", "user.email=sniper-bot@users.noreply.github.com",
+    ]
     for attempt in range(3):
-        _git(["fetch", "origin", "gh-pages"])
-        sw = _git(["switch", "-C", "gh-pages", "origin/gh-pages"])
-        if sw.returncode != 0:
-            _git(["switch", "--orphan", "gh-pages"])
+        work = tempfile.mkdtemp(prefix=f"feed{idx}_")
         try:
-            os.replace(src_path, name)
-            _git(["add", name])
-            commit = _git(["commit", "-m", f"data: shard {idx} live update"])
-            if commit.returncode == 0:
-                push = _git(["push", url, "gh-pages"])
-                if push.returncode == 0:
-                    return True
-        except OSError:
-            pass
+            if _git(["init", "-q", "-b", branch], cwd=work).returncode != 0:
+                continue
+            shutil.copyfile(blob_path, os.path.join(work, settings.FEED_FILE))
+            _git(["add", settings.FEED_FILE], cwd=work)
+            if _git(ident + ["commit", "-q", "-m", f"feed {idx}"], cwd=work).returncode != 0:
+                continue
+            push = _git(["push", "--force", url, f"HEAD:refs/heads/{branch}"], cwd=work)
+            if push.returncode == 0:
+                return True
+            if attempt == 2:
+                print(f"[flush] shard {idx}: push failed: "
+                      f"{push.stderr.strip()[-200:]}", flush=True)
+        except OSError as e:
+            print(f"[flush] shard {idx}: {e}", flush=True)
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
         time.sleep(2.0 + random.random() * 3.0)
     return False
 
 
 async def flusher_task(runner: PlatformRunner, store: Store, idx: int) -> None:
-    """Push fresh fragments to gh-pages: once early (bootstrap snapshot),
-    then whenever new finds appear, with a slow heartbeat in between."""
+    """Publish this shard's findings continuously: the moment the visible
+    picture changes, plus a heartbeat so the panel's "last scan" stays true."""
     passphrase = os.environ.get("DASH_PASSPHRASE", "").strip()
     if not passphrase:
+        print("[flush] DASH_PASSPHRASE unset; live panel feed disabled", flush=True)
         return
-    offset = idx * settings.STAGGER_PER_SHARD
-    last_pushed_count = -1
-    last_push_time = 0.0
-    tmp_dir = os.path.join(ROOT, "frag_live")
-    os.makedirs(tmp_dir, exist_ok=True)
-    tmp_out = os.path.join(tmp_dir, f"shard_{idx}.data.js")
-    await asyncio.sleep(settings.FLUSH_FIRST_DELAY + random.uniform(0, offset))
+    offset = (idx % 8) * settings.STAGGER_PER_SHARD
+    out = os.path.join(ROOT, "frag_live", f"shard_{idx}.data")
+    last_print = ""
+    sent_fp = None
+    last_push = 0.0
+    await asyncio.sleep(settings.FLUSH_FIRST_DELAY + offset)
     while not runner.stopping():
         try:
-            n = runner.found_free
-            now_mono = time.monotonic() + offset
-            due_new = n > last_pushed_count and now_mono - last_push_time >= settings.FLUSH_MIN_GAP
-            due_beat = now_mono - last_push_time >= settings.FLUSH_HEARTBEAT
-            if not (due_new or due_beat):
-                await asyncio.sleep(15)
+            since = time.monotonic() - last_push
+            fp = exporter.peek_fingerprint(store, idx)
+            due = (fp != sent_fp and since >= settings.FLUSH_MIN_GAP) or \
+                  since >= settings.FLUSH_HEARTBEAT
+            if not due:
+                await asyncio.sleep(settings.FLUSH_POLL)
                 continue
-            mode = exporter.write_fragment(store, idx, tmp_out, passphrase)
+            fp = exporter.write_feed(store, idx, out, passphrase)
             ok = await asyncio.get_running_loop().run_in_executor(
-                None, git_publish_fragment, tmp_out, idx
+                None, push_feed, out, idx
             )
+            last_push = time.monotonic()
             if ok:
-                last_pushed_count = n
-                last_push_time = time.monotonic() + offset
-                print(f"[flush] shard {idx}: pushed {mode} fragment ({n} finds)", flush=True)
+                sent_fp = fp
+                line = f"[flush] shard {idx}: live ({runner.found_free} claimable)"
+                if line != last_print:
+                    print(line, flush=True)
+                    last_print = line
             else:
-                print(f"[flush] shard {idx}: push failed, will retry", flush=True)
                 await asyncio.sleep(20)
         except Exception as e:
             print(f"[flush] shard {idx}: {e}", flush=True)
             await asyncio.sleep(30)
+
+
+def flush_once(store: Store, idx: int) -> bool:
+    """Write and push this shard's feed right now (used as the parting shot
+    when a cycle ends, so the branch holds the final state of the run)."""
+    passphrase = os.environ.get("DASH_PASSPHRASE", "").strip()
+    if not passphrase:
+        return False
+    out = os.path.join(ROOT, "frag_live", f"shard_{idx}.data")
+    exporter.write_feed(store, idx, out, passphrase)
+    return push_feed(out, idx)
 
 
 def cmd_run(args) -> None:
@@ -171,6 +212,8 @@ def cmd_run(args) -> None:
             await asyncio.gather(*tasks)
         finally:
             await session.close()
+            if not args.no_flush:
+                flush_once(store, idx)
             store.conn.close()
             print(
                 f"[minecraft] checked {runner.checked}, found claimable {runner.found_free}"
@@ -214,11 +257,30 @@ def cmd_add(args) -> None:
     store = Store(DB_PATH)
     names = [n.strip().lower() for n in args.names]
     good = [n for n in names if valid_for("minecraft", n)]
-    bad = [n for n in names if not valid_for("minecraft", n)]
+    blocked = [n for n in names if blocklist.is_blocked(n)]
+    bad = [n for n in names if n not in good and n not in blocked]
     added = store.add_names("minecraft", good)
     print(f"added {added:,}/{len(good):,}")
+    if blocked:
+        print(f"skipped (minecraft rejects these): {', '.join(blocked)}")
     if bad:
         print(f"skipped invalid: {', '.join(bad)}")
+
+
+def cmd_block(args) -> None:
+    """Teach the radar that minecraft refuses a name, and drop it everywhere."""
+    names = [n.strip().lower() for n in args.names]
+    fresh = blocklist.add(names)
+    store = Store(DB_PATH)
+    removed = store.remove_names("minecraft", names)
+    store.conn.close()
+    if fresh:
+        print(f"blocked {len(fresh)}: {', '.join(fresh)}")
+    else:
+        print("already blocked; nothing added")
+    print(f"removed from this db: {removed:,}")
+    print("commit sniper/data/blocked.txt to apply it in the cloud, or add the "
+          "same words to the BLOCK_EXTRA secret for an instant effect")
 
 
 def cmd_remove(args) -> None:
@@ -284,8 +346,12 @@ def cmd_pace(_args) -> None:
           f"(starts {settings.BREAKER_START // 60}min, doubles each trip, "
           f"max {settings.BREAKER_MAX // 3600}h); "
           f"{settings.UNKNOWN_STRIKE_LIMIT} junk responses also count as one signal")
-    print("  cloud    : 20 parallel github shards, each with its own IP, "
-          "so no single IP exceeds the pacing above")
+    print(f"  cloud    : {_shard()[1]} parallel github shards, each with its own "
+          "IP, so no single IP exceeds the pacing above")
+    print(f"  panel    : each shard force-pushes branch "
+          f"{settings.FEED_BRANCH.format(idx='N')} the moment its finds change "
+          f"(min {settings.FLUSH_MIN_GAP:.0f}s apart), heartbeat every "
+          f"{settings.FLUSH_HEARTBEAT / 60:.0f}min; no Pages build in the path")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -333,6 +399,10 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("remove", help="remove usernames from the watch list")
     p.add_argument("names", nargs="+")
     p.set_defaults(fn=cmd_remove)
+
+    p = sub.add_parser("block", help="mark names minecraft refuses, and drop them")
+    p.add_argument("names", nargs="+")
+    p.set_defaults(fn=cmd_block)
 
     p = sub.add_parser("test", help="check specific names right now (live request)")
     p.add_argument("names", nargs="+")

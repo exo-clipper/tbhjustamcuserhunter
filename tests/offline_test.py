@@ -1,5 +1,8 @@
 import asyncio
+import base64
 import json
+import os
+import re
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -9,12 +12,16 @@ import aiohttp
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sniper import settings
+from sniper import aeslite, blocklist, exporter, settings
 from sniper.platforms import minecraft
 from sniper.platforms.base import AVAILABLE, TAKEN, UNKNOWN, RateLimited
 from sniper.store import Store
 from sniper.exporter import build_payload
 from sniper.build_wordlists import double_ok, bigram_score
+from sniper.wordlists import valid_for
+
+# what the panel's own guard accepts off a feed branch (docs/index.html)
+PANEL_BLOB = re.compile(r"^[A-Za-z0-9+/=]{64,}$")
 
 KNOWN = {"notch", "wolf", "oopp"}          # currently owned
 HIST = KNOWN | {"gone"}                     # owned ~45d ago too
@@ -210,6 +217,128 @@ def test_exporter() -> list[str]:
     return fails
 
 
+def test_blocklist() -> list[str]:
+    """Two things matter: the words minecraft refuses never reach the watchlist,
+    and ordinary words that merely contain them are left alone."""
+    fails = []
+
+    def check(label, got, want):
+        ok = got == want
+        print(f"{'PASS' if ok else 'FAIL'} {label}: got {got!r}")
+        if not ok:
+            fails.append(label)
+
+    # the exact words the operator hit in-game
+    named = ["shag", "tits", "orgy", "damn", "jerk", "fuck", "bdsm"]
+    check("named offensive words blocked",
+          [blocklist.is_blocked(w) for w in named], [True] * len(named))
+    check("named words rejected by valid_for",
+          [valid_for("minecraft", w) for w in named], [False] * len(named))
+
+    # substring matching would gut the watchlist, so matching must be exact
+    ordinary = ["canal", "horn", "scum", "wolf", "assay", "pussycat", "hello"]
+    check("ordinary words not blocked",
+          [blocklist.is_blocked(w) for w in ordinary], [False] * len(ordinary))
+    check("case/space insensitive", blocklist.is_blocked("  SHAG "), True)
+
+    # BLOCK_EXTRA is the no-commit escape hatch used by the workflow
+    before = os.environ.get("BLOCK_EXTRA")
+    try:
+        os.environ["BLOCK_EXTRA"] = "wibb, wobb"
+        blocklist._cache = None
+        check("BLOCK_EXTRA adds words",
+              [blocklist.is_blocked("wibb"), blocklist.is_blocked("wobb")],
+              [True, True])
+    finally:
+        if before is None:
+            os.environ.pop("BLOCK_EXTRA", None)
+        else:
+            os.environ["BLOCK_EXTRA"] = before
+        blocklist._cache = None
+    check("BLOCK_EXTRA reverts", blocklist.is_blocked("wibb"), False)
+
+    lists = {"four.txt", "hot.txt"}
+    leaked = {}
+    for fn in lists:
+        p = Path(__file__).parent.parent / "sniper" / "data" / fn
+        if not p.exists():
+            continue
+        words = {ln.strip() for ln in p.read_text(encoding="utf-8").splitlines()}
+        bad = sorted(words & blocklist.blocked())
+        if bad:
+            leaked[fn] = bad
+    check("shipped wordlists carry no blocked names", leaked, {})
+    return fails
+
+
+def test_feed() -> list[str]:
+    """The live path: blob is panel-readable, blocked rows never surface, and
+    the fingerprint only moves when the panel would visibly change."""
+    fails = []
+    root = Path(__file__).parent.parent
+    db = root / "sniper" / "data" / "_test3.db"
+    out = root / "sniper" / "data" / "_test3.feed"
+    for p in (db, out):
+        if p.exists():
+            p.unlink()
+
+    def check(label, got, want):
+        ok = got == want
+        print(f"{'PASS' if ok else 'FAIL'} {label}: got {got!r}")
+        if not ok:
+            fails.append(label)
+
+    st = Store(db)
+    # "shag" is blocked but planted as claimable, exactly like a row restored
+    # from state that predates the blocklist entry
+    for name in ("zelda", "shag", "taken"):
+        st.add_names("minecraft", [name])
+    st.conn.execute(
+        "UPDATE names SET available = 1, last_checked = 500, changed_at = 400 "
+        "WHERE name IN ('zelda', 'shag')"
+    )
+    st.conn.execute(
+        "UPDATE names SET available = 0, last_checked = 500 WHERE name = 'taken'"
+    )
+    st.log_event("minecraft", "zelda", "claimable (verified via history)")
+    st.log_event("minecraft", "shag", "claimable (verified via history)")
+    st.conn.commit()
+
+    payload = build_payload(st, 5, exporter.FEED_EVENTS)
+    check("blocked name kept off the panel",
+          [r["n"] for r in payload["free"]], ["zelda"])
+    check("blocked name kept out of counts", payload["counts"]["total"], 2)
+    check("blocked name kept out of the log",
+          [e["n"] for e in payload["events"]], ["zelda"])
+
+    fp = exporter.write_feed(st, 5, str(out), "pw")
+    blob = out.read_text(encoding="utf-8").strip()
+    check("blob matches the panel's guard", bool(PANEL_BLOB.match(blob)), True)
+
+    raw = base64.b64decode(blob)
+    key = aeslite.derive_key("pw", raw[:16])
+    back = json.loads(aeslite.decrypt_cbc(key, raw[16:32], raw[32:]))
+    check("round-trips through decrypt",
+          (back["shard"], [r["n"] for r in back["free"]]), (5, ["zelda"]))
+
+    check("fingerprint stable while nothing changes",
+          exporter.peek_fingerprint(st, 5), fp)
+    st.add_names("minecraft", ["wolf"])
+    st.conn.execute(
+        "UPDATE names SET available = 1, last_checked = 600, changed_at = 600 "
+        "WHERE name = 'wolf'"
+    )
+    st.conn.commit()
+    check("fingerprint moves on a new find",
+          exporter.peek_fingerprint(st, 5) != fp, True)
+
+    st.conn.close()
+    for p in (db, out):
+        if p.exists():
+            p.unlink()
+    return fails
+
+
 def test_word_rules() -> list[str]:
     fails = []
     cases = [
@@ -230,9 +359,11 @@ async def main() -> int:
     port, stop = start_server()
     fails = []
     fails += test_word_rules()
+    fails += test_blocklist()
     fails += await test_checker(port)
     fails += test_store()
     fails += test_exporter()
+    fails += test_feed()
     stop()
     print(f"\n{'ALL PASS' if not fails else f'{len(fails)} FAILURES: {fails}'}")
     return 1 if fails else 0

@@ -173,6 +173,21 @@
     font-size: 10px; color: var(--dim); border: 1px solid var(--line);
     padding: 2px 7px; border-radius: 999px; letter-spacing: .1em;
   }
+  .card .badge {
+    position: absolute; top: 11px; right: 12px;
+    font-size: 9.5px; font-weight: 800; letter-spacing: .14em;
+    color: #052e21; background: var(--green);
+    padding: 3px 8px; border-radius: 999px;
+  }
+  .card.fresh {
+    border-color: rgba(52, 211, 153, .5);
+    box-shadow: 0 0 0 1px rgba(52, 211, 153, .18), 0 14px 34px rgba(0, 0, 0, .45);
+    animation: rise .35s ease both, glow 1.8s ease-in-out 3;
+  }
+  @keyframes glow {
+    0%, 100% { box-shadow: 0 0 0 1px rgba(52,211,153,.18), 0 14px 34px rgba(0,0,0,.45); }
+    50% { box-shadow: 0 0 0 4px rgba(52,211,153,.22), 0 14px 34px rgba(0,0,0,.45); }
+  }
   .card .when { color: var(--dim); font-size: 11.5px; margin: 7px 0 11px; }
   .card .acts { display: flex; gap: 7px; }
   .card a {
@@ -247,20 +262,44 @@
   <section id="gfree"><div class="grid" id="gridFree"></div></section>
   <section id="gl" hidden><div class="logbox" id="logs"></div></section>
 
-  <footer><span id="footTxt">auto-refreshes every 60s</span></footer>
+  <footer><span id="footTxt">connecting to live feed&hellip;</span></footer>
 </div>
 
 <script>
 "use strict";
-const SHARDS = 20, PBKF_ITER = 120000, CARD_CAP = 400, LOG_CAP = 250;
+const SHARDS = 18, PBKF_ITER = 120000, CARD_CAP = 400, LOG_CAP = 250;
+const POLL_MS = 12000;       // the feed is a branch, not a Pages build
+const NEW_FOR = 180;         // seconds a find keeps its NEW badge
+const STALE_AFTER = 420;     // no scan in this long = amber dot
 const $ = id => document.getElementById(id);
 const enc = new TextEncoder();
 const esc = s => String(s).replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
-let RAW = {};
+// panel is served from OWNER.github.io/REPO/, and the shards push their
+// encrypted blobs to branch feed-N of that same repo. ?repo=owner/name points
+// it at a different repo's branches.
+const qs = new URLSearchParams(location.search);
+const [qsOwner, qsRepo] = (qs.get("repo") || "").split("/");
+const OWNER = qsOwner || location.hostname.split(".")[0];
+const REPO = qsRepo || location.pathname.split("/").filter(Boolean)[0] ||
+             (OWNER + ".github.io");
+// ?feed=<base> reads feed-N/frag.txt from somewhere else entirely, for testing
+// the render path without github. Local pages only - the published panel must
+// not be redirectable to another origin by query string.
+const LOCAL = location.protocol === "file:" ||
+              /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+const FEED_BASE = (LOCAL && qs.get("feed")) || "";
+const feedURL = i => FEED_BASE
+  ? `${FEED_BASE}feed-${i}/frag.txt?t=${Date.now()}`
+  : `https://raw.githubusercontent.com/${OWNER}/${REPO}/feed-${i}/frag.txt?t=${Date.now()}`;
+
+let RAW = {};                // shard -> decrypted payload
+let BLOBS = {};              // shard -> ciphertext we last decrypted
 let KEY = null;
-let scriptTags = [];
+let lastFetch = 0;
+let seenNames = new Set();
+let firstPaint = true;
 
 function b64ToBytes(b) {
   const s = atob(b.replace(/-/g, "+").replace(/_/g, "/"));
@@ -285,28 +324,34 @@ async function decryptBlob(b64, pass) {
   return JSON.parse(new TextDecoder().decode(pt));
 }
 
-function loadShards() {
-  return new Promise(res => {
-    scriptTags.forEach(t => t.remove());
-    scriptTags = [];
-    window.SNIPER_DATA = { shards: {} };
-    let pending = SHARDS;
-    for (let i = 0; i < SHARDS; i++) {
-      const s = document.createElement("script");
-      s.src = `shard_${i}.data.js?t=${Date.now()}`;
-      const fin = () => { if (--pending === 0) res(); };
-      s.onload = fin; s.onerror = fin;
-      document.body.appendChild(s);
-      scriptTags.push(s);
-    }
-  });
+// pull every shard's branch straight off raw.githubusercontent; a missing
+// branch (shard never booted yet) is normal, not an error
+async function fetchFeed() {
+  const jobs = [];
+  for (let i = 0; i < SHARDS; i++) {
+    jobs.push(fetch(feedURL(i), { cache: "no-store" })
+      .then(r => r.ok ? r.text() : null)
+      .then(t => {
+        const blob = (t || "").trim();
+        if (/^[A-Za-z0-9+/=]{64,}$/.test(blob)) BLOBS[i] = blob;
+      })
+      .catch(() => {}));
+  }
+  await Promise.all(jobs);
+  lastFetch = Date.now();
+  return Object.keys(BLOBS).length;
 }
 
+// only shards whose ciphertext actually changed pay for a PBKDF2 derivation,
+// so a 12s poll stays cheap even with 18 shards
 async function decryptAll() {
-  RAW = {};
-  const entries = Object.entries(window.SNIPER_DATA?.shards || {});
-  await Promise.all(entries.map(async ([k, b]) => {
-    try { RAW[k] = await decryptBlob(b, KEY); } catch { RAW[k] = null; }
+  await Promise.all(Object.entries(BLOBS).map(async ([k, b]) => {
+    if (RAW[k] && RAW[k].__blob === b) return;
+    try {
+      const p = await decryptBlob(b, KEY);
+      p.__blob = b;
+      RAW[k] = p;
+    } catch { delete RAW[k]; }
   }));
 }
 
@@ -341,8 +386,12 @@ function rel(ts) {
 
 function cardHTML(f) {
   const confirmed = f.c ? rel(f.c) : rel(f.t);
-  return `<div class="card l5">
-    <span class="len">${esc(f.l)}-LTR</span>
+  // NEW = it showed up while you were watching, or it was discovered in the
+  // last few minutes (so a fresh page load still flags the recent ones)
+  const fresh = (!firstPaint && !seenNames.has(f.n)) ||
+                (Date.now() / 1000 - f.t) < NEW_FOR;
+  return `<div class="card${fresh ? " fresh" : ""}">
+    ${fresh ? '<span class="badge">NEW</span>' : `<span class="len">${esc(f.l)}-LTR</span>`}
     <div class="name mono">${esc(f.n)}</div>
     <div class="when" title="discovered ${rel(f.t)}">&#10003; confirmed free ${confirmed}</div>
     <div class="acts">
@@ -376,6 +425,8 @@ function render() {
     $("gridFree").insertAdjacentHTML("beforeend",
       `<div class="empty" style="grid-column:1/-1">+ ${(d.frees.length - CARD_CAP).toLocaleString()} more &mdash; showing newest ${CARD_CAP}</div>`);
   }
+  seenNames = new Set(d.frees.map(f => f.n));
+  firstPaint = false;
 
   const seen = new Set();
   const logs = [];
@@ -391,8 +442,16 @@ function render() {
   const age = Date.now() / 1000 - d.lastChecked;
   const dot = $("liveDot"), txt = $("liveTxt");
   if (!d.lastChecked) { txt.textContent = "no data yet"; dot.className = "dot"; }
-  else if (age < 3600) { txt.textContent = `live \u00b7 scanned ${rel(d.lastChecked)} \u00b7 ${d.shardsLive} shard${d.shardsLive === 1 ? "" : "s"}`; dot.className = "dot live"; }
-  else { txt.textContent = `stale \u00b7 last scan ${rel(d.lastChecked)}`; dot.className = "dot stale"; }
+  else if (age < STALE_AFTER) {
+    txt.textContent = `live \u00b7 scanned ${rel(d.lastChecked)} \u00b7 ${d.shardsLive}/${SHARDS} shards`;
+    dot.className = "dot live";
+  } else {
+    txt.textContent = `stale \u00b7 last scan ${rel(d.lastChecked)}`;
+    dot.className = "dot stale";
+  }
+  document.title = d.frees.length ? `(${d.frees.length}) SNIPER` : "SNIPER";
+  $("footTxt").textContent =
+    `live feed \u00b7 refreshed ${rel(lastFetch / 1000)} \u00b7 polling every ${POLL_MS / 1000}s`;
 }
 
 function reveal() {
@@ -402,13 +461,13 @@ function reveal() {
 }
 
 async function tryUnlock(pass, persist) {
-  const blobs = Object.keys(window.SNIPER_DATA?.shards || {});
+  const blobs = Object.values(BLOBS);
   if (!blobs.length) { $("gateErr").textContent = "no data published yet"; return false; }
-  try {
-    await decryptBlob(window.SNIPER_DATA.shards[blobs[0]], pass);
-  } catch {
-    return false;
+  let ok = false;
+  for (const b of blobs) {
+    try { await decryptBlob(b, pass); ok = true; break; } catch {}
   }
+  if (!ok) return false;
   KEY = pass;
   if (persist) localStorage.setItem("snipe_key", pass);
   await decryptAll();
@@ -426,6 +485,7 @@ for (const el of document.querySelectorAll(".tab")) {
 }
 
 $("unlock").addEventListener("click", async () => {
+  $("gateErr").textContent = "checking\u2026";
   const ok = await tryUnlock($("pass").value, true);
   if (!ok) {
     $("gateErr").textContent = "wrong passphrase";
@@ -436,20 +496,28 @@ $("unlock").addEventListener("click", async () => {
 $("pass").addEventListener("keydown", e => { if (e.key === "Enter") $("unlock").click(); });
 
 (async function boot() {
-  await loadShards();
+  $("gateErr").textContent = "fetching feed\u2026";
+  const n = await fetchFeed();
+  $("gateErr").textContent = n ? "" : "no data published yet";
   const saved = localStorage.getItem("snipe_key");
   if (saved && await tryUnlock(saved, false)) return;
-  if (!Object.keys(window.SNIPER_DATA?.shards || {}).length) {
-    $("gateErr").textContent = "no data published yet";
-  }
 })();
 
 setInterval(async () => {
+  await fetchFeed();
   if (!KEY) return;
-  await loadShards();
   await decryptAll();
   render();
-}, 60000);
+}, POLL_MS);
+
+// a find is only useful while you are looking, so catch up the instant the
+// tab comes back to the foreground
+document.addEventListener("visibilitychange", async () => {
+  if (document.hidden || !KEY) return;
+  await fetchFeed();
+  await decryptAll();
+  render();
+});
 </script>
 </body>
 </html>

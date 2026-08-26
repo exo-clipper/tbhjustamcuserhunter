@@ -7,3 +7,7 @@ sniper/data/sniper_shard_*.db*
 sniper/data/alerts.log
 sniper/data/free_*.txt
 sniper/data/extras.txt
+frag_live/
+frag/
+state/
+_paneltest/

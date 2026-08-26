@@ -1,11 +1,15 @@
 name: publish
+# Deploys the panel itself. Findings do NOT come through here any more - each
+# shard force-pushes its own feed-<n> branch and the panel fetches those live,
+# so a find never waits on a Pages build. This only runs when the panel HTML
+# changes (plus a daily safety net).
 on:
+  push:
+    branches: [main]
+    paths: ["docs/index.html"]
   schedule:
-    - cron: "23 * * * *"     # hourly safety net
+    - cron: "23 4 * * *"
   workflow_dispatch: {}
-  workflow_run:
-    workflows: ["watch"]
-    types: [completed]
 permissions:
   contents: write
 concurrency:
@@ -13,47 +17,30 @@ concurrency:
   cancel-in-progress: true
 jobs:
   deploy:
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
-      - name: find latest successful watch run
-        id: prev
-        continue-on-error: true
-        run: |
-          RID=$(gh api "repos/${{ github.repository }}/actions/workflows/watch.yml/runs?per_page=20" \
-            --jq '[.workflow_runs[] | select(.conclusion=="success")][0].id // ""')
-          echo "run_id=$RID" >> "$GITHUB_OUTPUT"
-      - name: fetch fragments
-        if: steps.prev.outputs.run_id != ''
-        continue-on-error: true
-        uses: actions/download-artifact@v4
-        with:
-          pattern: "frag-*"
-          path: frags/
-          merge-multiple: true
-          github-token: ${{ github.token }}
-          run-id: ${{ steps.prev.outputs.run_id }}
-      - name: push to gh-pages
+      - name: push panel to gh-pages
         run: |
           git config user.name "sniper-bot"
           git config user.email "sniper-bot@users.noreply.github.com"
-          git fetch origin main gh-pages 2>/dev/null || true
+          git fetch origin gh-pages 2>/dev/null || true
           if git rev-parse --verify origin/gh-pages >/dev/null 2>&1; then
             git switch -C gh-pages origin/gh-pages
           else
             git switch --orphan gh-pages
           fi
-          rm -f shard_*.data.js index.html
+          # legacy per-shard fragments: the panel reads the feed branches now
+          rm -rf shard_*.data.js frags index.html
           git show origin/main:docs/index.html > index.html
-          ls frags/shard_*.data.js >/dev/null 2>&1 && cp frags/shard_*.data.js . || echo "no fragments yet"
+          touch .nojekyll
           git add -A
           if git diff --cached --quiet; then
-            echo "nothing changed"
+            echo "panel unchanged"
           else
-            git commit -m "publish latest radar data"
+            git commit -m "publish panel"
             git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" gh-pages
           fi

@@ -15,6 +15,7 @@ import urllib.request
 from pathlib import Path
 
 from sniper import settings
+from sniper.blocklist import blocked
 
 DATA = Path(__file__).parent / "data"
 OUT_MAIN = DATA / "four.txt"
@@ -26,17 +27,8 @@ URLS = {
     "names": "https://raw.githubusercontent.com/smashew/NameDatabases/master/NamesDatabases/first%20names/us.txt",
 }
 
-BLOCKLIST = {
-    # minecraft's profanity filter rejects these, so they can never be
-    # claimed - showing them would waste your time
-    "anal", "anus", "arse", "bdsm", "bitch", "boob", "boobs", "boner",
-    "clit", "cock", "cum", "cunt", "dago", "damn", "dick", "dild",
-    "dyke", "fag", "fags", "fapp", "fuck", "gook", "homo", "horn",
-    "horny", "hump", "japs", "jerk", "jizz", "kike", "kys", "nigg",
-    "nude", "orgy", "penis", "porn", "prick", "pube", "puss", "queef",
-    "rape", "semen", "sexy", "shag", "shags", "shit", "skank", "slut",
-    "spic", "tit", "tits", "twat", "wank", "whor",
-}
+# names mojang's own profanity filter refuses - see sniper/data/blocked.txt
+BLOCKLIST = blocked()
 
 BRANDS = {
     "sony", "nike", "puma", "ikea", "audi", "vans", "razer", "fendi",

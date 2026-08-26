@@ -2,6 +2,8 @@ import re
 import zlib
 from pathlib import Path
 
+from .blocklist import is_blocked
+
 DATA = Path(__file__).parent / "data"
 
 PLATFORMS = ("minecraft",)
@@ -15,7 +17,11 @@ _RULES = {
 
 
 def valid_for(platform: str, name: str) -> bool:
-    return bool(_RULES[platform].match(name))
+    """Could minecraft actually hand you this name? Format plus the
+    profanity filter - a name mojang refuses is not worth watching."""
+    if not _RULES[platform].match(name):
+        return False
+    return not is_blocked(name)
 
 
 def load_names(platform: str) -> list[str]:
@@ -38,7 +44,7 @@ def load_hot(idx: int, cnt: int) -> list[str]:
     out = []
     for line in p.read_text(encoding="utf-8").splitlines():
         n = line.strip().lower()
-        if not n:
+        if not n or is_blocked(n):
             continue
         if cnt <= 1 or zlib.crc32(n.encode()) % cnt == idx:
             out.append(n)

@@ -1,38 +1,43 @@
 name: watch
+# Continuity model: one job per shard, each pinned to its own concurrency
+# group. The cron keeps proposing a fresh wave; GitHub queues each proposal
+# behind the shard that is still running and drops any older pending one, so
+# there is always exactly one successor waiting and a dead shard is picked up
+# within ~15 min. No workflow_run chain to break.
 on:
   schedule:
-    - cron: "9,29,49 * * * *"   # cold-start healer; the chain sustains itself
+    - cron: "3,18,33,48 * * * *"
   workflow_dispatch:
     inputs:
       loop_minutes:
         description: "minutes each shard keeps watching"
-        default: "330"
-  workflow_run:
-    workflows: ["publish"]
-    types: [completed]
+        default: "165"
 permissions:
   contents: write
+  actions: read          # needed to list + pull the previous run's state artifact
 jobs:
   minecraft:
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 200
     strategy:
       fail-fast: false
-      max-parallel: 20
+      # GitHub Free allows 20 concurrent jobs; 18 shards leaves room for
+      # publish to actually run instead of queueing behind the fleet
+      max-parallel: 18
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
     concurrency:
       group: watcher-${{ matrix.shard }}
       cancel-in-progress: false
     env:
       SNIPE_DB: state/sniper_shard_${{ matrix.shard }}.db
       SHARD_INDEX: ${{ matrix.shard }}
-      SHARD_COUNT: "20"
+      SHARD_COUNT: "18"
       EXTRA_NAMES: ${{ secrets.EXTRA_NAMES }}
+      BLOCK_EXTRA: ${{ secrets.BLOCK_EXTRA }}
       DASH_PASSPHRASE: ${{ secrets.DASH_PASSPHRASE }}
       GH_TOKEN: ${{ github.token }}
-      LOOP_MINUTES: ${{ github.event.inputs.loop_minutes || '330' }}
+      LOOP_MINUTES: ${{ github.event.inputs.loop_minutes || '165' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -41,13 +46,18 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
       - run: pip install aiohttp
-      - name: find previous run
+      - name: find previous state
         id: prev
         continue-on-error: true
+        # Ask for the newest state-<shard> artifact directly rather than the
+        # newest *successful* run: with 18 shards a run's overall conclusion is
+        # "failure" whenever any one shard dies, and keying on that would throw
+        # away hours of good state for the 17 shards that were fine.
         run: |
-          RID=$(gh api "repos/${{ github.repository }}/actions/workflows/watch.yml/runs?per_page=30" \
-            --jq '[.workflow_runs[] | select(.conclusion=="success")][0].id // ""')
+          RID=$(gh api "repos/${{ github.repository }}/actions/artifacts?name=state-${{ matrix.shard }}&per_page=5" \
+            --jq '[.artifacts[] | select(.expired==false)][0].workflow_run.id // ""')
           echo "run_id=$RID" >> "$GITHUB_OUTPUT"
+          echo "state from run ${RID:-<none>}"
       - name: restore state
         if: steps.prev.outputs.run_id != ''
         continue-on-error: true
@@ -58,17 +68,12 @@ jobs:
           github-token: ${{ github.token }}
           run-id: ${{ steps.prev.outputs.run_id }}
       - run: python main.py init
+      # publishes to branch feed-<shard> continuously while it runs, and once
+      # more on the way out, so that branch is the single source of panel data
       - run: python main.py run --minutes "$LOOP_MINUTES" --quiet
-      - run: python main.py export --out frag/shard_${{ matrix.shard }}.data.js
       - name: upload state
         uses: actions/upload-artifact@v4
         with:
           name: state-${{ matrix.shard }}
           path: state/sniper_shard_${{ matrix.shard }}.db
-          if-no-files-found: ignore
-      - name: upload fragment
-        uses: actions/upload-artifact@v4
-        with:
-          name: frag-${{ matrix.shard }}
-          path: frag/shard_${{ matrix.shard }}.data.js
           if-no-files-found: ignore

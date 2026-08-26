@@ -1,0 +1,115 @@
+# Names minecraft's own profanity filter refuses to accept.
+#
+# ONLY put genuinely offensive words here: slurs, sexual/crude terms, and the
+# mild swears mojang is known to reject (damn, jerk). Everything else stays
+# watchable - an edgy-sounding but ordinary word is still a claimable name
+# ("horn" is literally a minecraft item, "canal" is a canal).
+#
+# Matching is EXACT, never substring, so "anal" here never hides "canal".
+# One word per line, lowercase. Blank lines and # comments ignored.
+# You can also add words without editing this file via the BLOCK_EXTRA secret.
+
+# --- mild swears mojang still rejects -----------------------------------
+damn
+jerk
+crap
+piss
+turd
+
+# --- crude / sexual -----------------------------------------------------
+anal
+anus
+arse
+bdsm
+boob
+boobs
+boner
+clit
+cock
+cocks
+cunt
+cums
+dick
+dild
+dildo
+gash
+jism
+jizz
+kunt
+milf
+dilf
+nude
+nudes
+orgy
+penis
+poon
+porn
+prick
+pube
+pubes
+puss
+pussy
+queef
+rape
+rapes
+semen
+sexy
+shag
+shags
+shit
+shits
+skank
+slag
+slut
+sluts
+smut
+smeg
+titt
+tits
+titty
+twat
+wank
+whor
+whore
+hump
+horny
+
+# --- slurs / hate -------------------------------------------------------
+abbo
+bich
+bitch
+chink
+cnut
+coon
+dago
+dyke
+fag
+fags
+fagg
+gimp
+gook
+gyps
+heil
+homo
+kike
+mong
+nazi
+nigg
+nigs
+paki
+spaz
+spic
+tard
+wops
+kys
+
+# --- obvious filter-dodge spellings -------------------------------------
+fuck
+fucc
+fuk
+fuks
+fcuk
+phuk
+phuc
+shyt
+biatch

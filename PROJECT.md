@@ -19,36 +19,49 @@ no phone notifications — everything lands on the panel only.
 |---|---|
 | Repo | https://github.com/randomcharstohideprof/thetelehunter |
 | Panel | https://randomcharstohideprof.github.io/thetelehunter/ |
+| Live data | branches `feed-0` … `feed-17`, each holding one encrypted `frag.txt` |
 | Panel passphrase | stored ONLY in the `DASH_PASSPHRASE` secret — never in this repo |
 | Cost | $0 forever |
 
-GitHub secrets: `DASH_PASSPHRASE` (panel key). Optional secret `EXTRA_NAMES`
-(comma-separated) adds personal names; unknown-history names are verified via
-the history probe before they are shown. Phone pushes were removed by choice.
+GitHub secrets: `DASH_PASSPHRASE` (panel key). Optional: `EXTRA_NAMES`
+(comma-separated) adds personal names, `BLOCK_EXTRA` (comma-separated) hides
+words Minecraft's profanity filter refuses without waiting for a commit.
+Phone pushes were removed by choice.
 
 ---
 
 ## How it works
 
-1. A GitHub Action chain keeps **20 parallel shards** alive ~50 min each
-   (self-restarting `workflow_run` chain + 15-min cron watchdog), each with its
-   own runner IP.
+1. A GitHub Action keeps **18 parallel shards** alive ~165 min each, one job per
+   shard, each with its own runner IP. Every shard job is pinned to its own
+   `watcher-<n>` concurrency group and a 15-min cron keeps proposing a fresh
+   wave: GitHub parks each proposal behind the shard that is still running and
+   discards any older pending one, so **exactly one successor is always waiting**
+   and a dead shard is picked back up within ~15 min. Nothing to restart by hand.
+   18 (not 20) because GitHub Free allows 20 concurrent jobs and the panel
+   deploy must not queue behind the fleet — that is what broke it before.
 2. Each shard checks **batches of 10 names per POST** against two official
    bulk endpoints (`api.mojang.com` and `api.minecraftservices.com`), politely:
-   ~1 POST/s per IP → **~200 names/s fleet-wide**.
+   ~1 POST/s per IP → **~180 names/s fleet-wide**.
 3. Three lanes per loop iteration:
    - **Drop strikes** — names we watched get abandoned are locked for exactly
      **37 days** (Mojang rule). They are fast-polled starting 90 s before their
      unlock second and appear on the panel the moment they turn claimable.
    - **Hot lane** — best ~160 names (ranked word frequency / brands) re-checked
      every **~10 s**.
-   - **Full sweep** — all ~4,100 watched names at least every ~45–60 s.
+   - **Full sweep** — all ~4,100 watched names at least every ~30–60 s.
 4. Any throttle signal (429, or 8 junk responses in a row) trips a **circuit
    breaker** that pauses that shard with escalating cooldowns (5 min → 6 h max).
-5. Findings are encrypted (**AES-256-CBC**, PBKDF2-SHA256 120k iterations),
-   uploaded as private artifacts, merged and deployed to GitHub Pages with the
-   single-file dashboard every cycle (~hourly).
-6. The panel shows **only names verified claimable right now** — nothing else.
+5. **Findings go live in seconds, not hours.** Each shard encrypts its own
+   snapshot (**AES-256-CBC**, PBKDF2-SHA256 120k iterations) and force-pushes it
+   to its own branch `feed-<n>` as a single file `frag.txt`, the instant its
+   visible picture changes (floor: 15 s apart) plus a 4-min heartbeat so the
+   "last scan" pill stays honest. The panel polls all 18 branches straight off
+   `raw.githubusercontent.com` every **12 s** and decrypts in the browser.
+   **There is no GitHub Pages build in the data path** — Pages only ships the
+   HTML, and only when the HTML itself changes.
+6. The panel shows **only names verified claimable right now** — nothing else,
+   and never a name Minecraft's profanity filter would refuse.
 
 ### Why some free-looking names don't show immediately
 
@@ -67,9 +80,26 @@ Worst case for a genuinely-free name: it appears after one probe cycle
 | Event | Delay |
 |---|---|
 | Hot-lane name frees | ≤ ~10–15 s |
-| Any other name frees | ≤ ~60 s (sweep period) |
+| Any other name frees | ≤ ~30–60 s (sweep period) |
 | Watched drop unlocks | strike window starts T-90 s |
-| Visible on panel | next publish (~hourly) |
+| **Detected → visible on the panel** | **~20–40 s** (≤15 s push floor + ~3 s push + ≤12 s poll) |
+| Panel "last scan" pill | never older than ~4 min while a shard lives |
+
+### Blocked words
+
+Minecraft's own profanity filter refuses to hand out names like `shag`, `tits`,
+`orgy`, `damn`, `jerk`, `fuck`, `bdsm` — watching them wastes sweep time and
+showing them wastes yours. `sniper/data/blocked.txt` is the single list, and
+it is applied in four places so nothing can leak: the wordlist builder, the
+`valid_for()` name rule, `main.py init` (which sweeps blocked names out of
+restored state), and the exporter (so even a legacy DB row can't reach the
+panel). Matching is **exact, never substring** — `anal` on the list does not
+hide `canal`, and ordinary words like `horn` (a Minecraft item) and `scum`
+stay watchable on purpose.
+
+Add words two ways: `python main.py block <name>...` then commit
+`sniper/data/blocked.txt`, or paste them into the `BLOCK_EXTRA` secret for
+immediate effect with no commit.
 
 ---
 
@@ -84,10 +114,19 @@ Worst case for a genuinely-free name: it appears after one probe cycle
   key lives solely in the GitHub secret. Still, treat panel contents as
   "behind a locked door", not a vault — anyone patient enough could brute-force
   a weak passphrase offline, so keep it long and random.
+- The `feed-*` branches are **public ciphertext**. That is fine (that is the
+  point of encrypting them) but it is also why the passphrase must be strong.
+- **20 concurrent jobs is the hard ceiling** on GitHub Free. Never raise the
+  shard count to 20: the panel deploy then has nowhere to run and the whole
+  publish path silently queues forever. That exact mistake caused the outage
+  where the panel froze at "70m ago".
+- Never `git switch` branches inside a runner's own checkout mid-run — it
+  deletes `main.py` and `sniper/` out from under the process that is running.
+  Feed pushes happen in a throwaway `tempfile.mkdtemp()` repo for that reason.
 - api.mojang.com occasionally throws **sporadic 403s** (known Mojang quirk);
   the checker tolerates them and only breaker-trips on sustained junk or 429s.
 - One shard occasionally dies to a transient GitHub runner error ("Set up job").
-  It self-heals next cycle — that's what the LOGS tab is for.
+  It self-heals within ~15 min — that's what the LOGS tab is for.
 - Detecting is free; **claiming needs your own paid Minecraft account**, done
   manually at minecraft.net → profile. Automated claiming violates Mojang rules.
 
@@ -97,29 +136,43 @@ Worst case for a genuinely-free name: it appears after one probe cycle
 2. Minecraft conversion: batch×10 lookups against two official bulk hosts;
    37-day lifecycle tracking (flip timestamps, drop strikes, reclaim detection);
    history probes to disambiguate cooldown vs claimable; notifications removed.
-3. Wordlists rebuilt: 2,181 dictionary words + 588 four-letter first names +
+3. Wordlists rebuilt: ~2,150 dictionary words + 588 four-letter first names +
    curated brands/terms + up to 1,500 scored adjacent-double-letter patterns
    (`xxli` yes, `xlxi` never). Builder: `sniper/build_wordlists.py`.
 4. Persistence stays race-free artifact storage; nothing sensitive hits git.
 5. Workflow switched from 5-min cron bursts to chained ~50-min loops
    (public repo = unlimited Actions minutes).
+6. **Latency rewrite.** The old path (encrypt → artifact → merge job → Pages
+   build) meant a find took 30–70 min to appear, and it had died outright: the
+   flush step was switching branches inside the live checkout, 20 shards had
+   eaten every concurrency slot so the publish job could never start, and the
+   mutual `workflow_run` chain self-skipped once either side was cancelled.
+   Replaced with per-shard `feed-<n>` branches + a 12 s browser poll (seconds
+   end to end), 18 shards, and per-shard concurrency groups instead of a chain.
+7. **Profanity blocklist** (`sniper/data/blocked.txt` + `BLOCK_EXTRA`): names
+   Mojang's filter refuses are no longer watched or shown.
 
 ## File map
 
 ```
-main.py                     CLI: init / run / stats / free / add / remove / test / pace / export
+main.py                     CLI: init / run / stats / free / add / block / remove / test / pace / export
 sniper/
-  settings.py               batch size/delay, lane intervals, breaker config
+  settings.py               batch size/delay, lane intervals, breaker + feed config
   engine.py                 batch scheduler, hot lane, drop strikes, circuit breaker
   store.py                  SQLite state (per-shard DBs, flip_ts lifecycle)
   platforms/minecraft.py    bulk POST checker (two hosts) + ?at= history probe
-  exporter.py               builds + encrypts dashboard fragments (claimable-only)
+  exporter.py               builds + encrypts panel payloads (claimable-only) + fingerprints
+  blocklist.py              the one place a name is judged offensive
+  data/blocked.txt          the curated list (exact match, one word per line)
   aeslite.py                pure-python AES-256 (verified vs FIPS-197 vector)
   wordlists.py              validity rules + list loading (+ shard hot slice)
   build_wordlists.py        rebuilds sniper/data/four.txt + hot.txt
-docs/index.html             the entire dashboard (single file)
-tests/                      offline checker/store/exporter tests + AES vector test
-.github/workflows/watch.yml the whole cloud operation
+docs/index.html             the entire dashboard (single file, polls feed-* branches)
+tests/                      offline checker/store/exporter/blocklist/feed tests + AES vector
+_paneltest.py               builds a fake local feed so the panel can be browser-tested
+_verify_panel.py            decrypts the live feed branches from the CLI
+.github/workflows/watch.yml the 18-shard fleet (the whole cloud operation)
+.github/workflows/publish.yml  ships docs/index.html to gh-pages (panel only, no data)
 ```
 
 ## Local commands (optional — PC not required)
@@ -130,21 +183,31 @@ py -m venv .venv
 .venv\Scripts\python.exe -m sniper.build_wordlists   # rebuild four.txt/hot.txt
 .venv\Scripts\python.exe main.py init          # rebuild local DB from four.txt
 .venv\Scripts\python.exe main.py test zelda    # live-check one name
+.venv\Scripts\python.exe main.py block shag    # never watch/show this name again
 .venv\Scripts\python.exe main.py stats
 .venv\Scripts\python.exe main.py pace          # show current safety config
 .venv\Scripts\python.exe tests\offline_test.py # offline test suite
+$env:PANEL_PASS="..."; .venv\Scripts\python.exe _verify_panel.py   # is the live feed fresh?
 ```
 
 ## Maintenance cheat-sheet
 
-- **Is it alive?** Repo → Actions tab → latest `watch` run green? Or open the
-  panel and check the "last scan" pill (should read minutes, not hours).
+- **Is it alive?** Open the panel: the "last scan" pill should read seconds or a
+  few minutes, never hours, and it should say `18/18 shards`. From the CLI,
+  `_verify_panel.py` prints per-shard freshness.
 - **Add names to watch:** Settings → Secrets → Actions → update `EXTRA_NAMES`
   (e.g. `myname, othername`). Unknown ones get history-probed before showing.
-- **Change panel password:** update `DASH_PASSPHRASE`. Next cycle re-encrypts
-  all fragments under the new key.
-- **Stop everything:** Settings → Actions → Disable workflows (or disable the
-  schedule AND delete the workflow file — the chain restarts itself otherwise).
+- **Hide a word Minecraft rejects:** add it to the `BLOCK_EXTRA` secret for
+  instant effect, or `main.py block <word>` + commit `blocked.txt` to make it
+  permanent.
+- **Change panel password:** update `DASH_PASSPHRASE`. Each shard re-encrypts
+  under the new key on its next push (seconds to ~4 min).
+- **Stop everything:** Settings → Actions → Disable workflows. Disabling the
+  `watch` workflow is enough — the successor waves come from its own cron, so
+  there is no chain to break separately.
+- **Panel says "no data yet"?** The `feed-*` branches don't exist until a shard
+  has run for ~45 s with `DASH_PASSPHRASE` set. Check the run log for
+  `[flush] DASH_PASSPHRASE unset` — that means the secret is missing.
 - **Panel empty but runs green?** Early after (re)init most names sit in
   taken/locked while the first sweeps classify them; claimable finds accumulate
   over the following cycles.

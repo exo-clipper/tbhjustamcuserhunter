@@ -21,11 +21,18 @@ UNKNOWN_STRIKE_LIMIT = 8 # consecutive junk responses -> treat as throttling
 
 HOT_MAX = 160            # size of the fast lane
 
-# --- live panel publishing ----------------------------------------------------
-FLUSH_FIRST_DELAY = 150.0   # seconds after boot: first guaranteed snapshot push
-FLUSH_MIN_GAP = 75.0        # min seconds between pushes of this shard
-FLUSH_HEARTBEAT = 900.0     # push even without new finds every 15 min
-STAGGER_PER_SHARD = 25.0    # offset each shard so fleet pushes spread out
+# --- live panel feed -----------------------------------------------------------
+# Each shard force-pushes its own encrypted blob to its own `feed-N` branch and
+# the panel fetches those branches directly (raw.githubusercontent.com), so a
+# find never waits on a GitHub Pages build. Pushing costs a commit, so quiet
+# shards only heartbeat; a shard with news pushes within seconds.
+FEED_BRANCH = "feed-{idx}"   # one branch per shard = force-push, never a race
+FEED_FILE = "frag.txt"
+FLUSH_POLL = 5.0            # how often a shard checks whether it has news
+FLUSH_FIRST_DELAY = 45.0    # first snapshot goes out this soon after boot
+FLUSH_MIN_GAP = 15.0        # floor between pushes when finds keep landing
+FLUSH_HEARTBEAT = 240.0     # push anyway, so "last scan" stays honest
+STAGGER_PER_SHARD = 3.0     # spread the fleet's heartbeats out a little
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
