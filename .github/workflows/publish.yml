@@ -1,0 +1,57 @@
+name: publish
+on:
+  schedule:
+    - cron: "23 * * * *"     # hourly safety net
+  workflow_dispatch: {}
+  workflow_run:
+    workflows: ["watch"]
+    types: [completed]
+permissions:
+  contents: read
+concurrency:
+  group: pages-publish
+  cancel-in-progress: true
+jobs:
+  deploy:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: find latest successful watch run
+        id: prev
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RID=$(gh api "repos/${{ github.repository }}/actions/workflows/watch.yml/runs?per_page=20" \
+            --jq '[.workflow_runs[] | select(.conclusion=="success")][0].id // ""')
+          echo "run_id=$RID" >> "$GITHUB_OUTPUT"
+      - name: fetch fragments
+        if: steps.prev.outputs.run_id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "frag-*"
+          path: frags/
+          merge-multiple: true
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.prev.outputs.run_id }}
+      - name: assemble site
+        run: |
+          mkdir site
+          cp docs/index.html site/
+          cp frags/*.data.js site/ 2>/dev/null || echo "no fragments yet"
+          ls site/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4

@@ -1,20 +1,18 @@
 name: watch
 on:
   schedule:
-    - cron: "*/15 * * * *"   # watchdog; the chain below keeps it continuous
-  workflow_dispatch: {}
-  workflow_run:
-    workflows: ["watch"]
-    types: [completed]
-concurrency:
-  group: watch-chain
-  cancel-in-progress: false
+    - cron: "*/20 * * * *"   # watchdog: restarts cycles, self-heals dead shards
+  workflow_dispatch:
+    inputs:
+      loop_minutes:
+        description: "minutes each shard keeps watching"
+        default: "330"
 permissions:
   contents: read
 jobs:
   minecraft:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 350
     strategy:
       fail-fast: false
       max-parallel: 20
@@ -30,6 +28,7 @@ jobs:
       EXTRA_NAMES: ${{ secrets.EXTRA_NAMES }}
       DASH_PASSPHRASE: ${{ secrets.DASH_PASSPHRASE }}
       GH_TOKEN: ${{ github.token }}
+      LOOP_MINUTES: ${{ github.event.inputs.loop_minutes || '330' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -55,7 +54,7 @@ jobs:
           github-token: ${{ github.token }}
           run-id: ${{ steps.prev.outputs.run_id }}
       - run: python main.py init
-      - run: python main.py run --minutes 50 --quiet
+      - run: python main.py run --minutes "$LOOP_MINUTES" --quiet
       - run: python main.py export --out frag/shard_${{ matrix.shard }}.data.js
       - name: upload state
         uses: actions/upload-artifact@v4
@@ -69,34 +68,3 @@ jobs:
           name: frag-${{ matrix.shard }}
           path: frag/shard_${{ matrix.shard }}.data.js
           if-no-files-found: ignore
-
-  publish:
-    needs: minecraft
-    if: ${{ always() }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: "frag-*"
-          path: frags/
-          merge-multiple: true
-      - name: assemble site
-        run: |
-          mkdir site
-          cp docs/index.html site/
-          cp frags/*.data.js site/ 2>/dev/null || echo "no fragments yet"
-          ls site/
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: site
-      - id: deploy
-        uses: actions/deploy-pages@v4
