@@ -41,11 +41,15 @@ jobs:
         run: |
           git config user.name "sniper-bot"
           git config user.email "sniper-bot@users.noreply.github.com"
-          git fetch origin gh-pages 2>/dev/null || true
-          git switch gh-pages 2>/dev/null || git switch --orphan gh-pages
+          git fetch origin main gh-pages 2>/dev/null || true
+          if git rev-parse --verify origin/gh-pages >/dev/null 2>&1; then
+            git switch -C gh-pages origin/gh-pages
+          else
+            git switch --orphan gh-pages
+          fi
           rm -f shard_*.data.js index.html
-          cp docs/index.html .
-          ls frags/*.data.js >/dev/null 2>&1 && cp frags/shard_*.data.js . || echo "no fragments yet"
+          git show origin/main:docs/index.html > index.html
+          ls frags/shard_*.data.js >/dev/null 2>&1 && cp frags/shard_*.data.js . || echo "no fragments yet"
           git add -A
           if git diff --cached --quiet; then
             echo "nothing changed"
