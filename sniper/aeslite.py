@@ -107,6 +107,83 @@ def derive_key(passphrase: str, salt: bytes, iterations: int = 120000) -> bytes:
     return hashlib_pbkdf2(passphrase, salt, iterations)
 
 
+_INV_SBOX = [0] * 256
+for _i, _v in enumerate(_SBOX):
+    _INV_SBOX[_v] = _i
+
+
+def _inv_xtime(a: int) -> int:
+    a <<= 1
+    if a & 0x100:
+        a ^= 0x11B
+    return a & 0xFF
+
+
+def _gmul(a: int, b: int) -> int:
+    out = 0
+    for _ in range(8):
+        if b & 1:
+            out ^= a
+        a = _inv_xtime(a)
+        b >>= 1
+    return out
+
+
+def _inv_shift_rows(state: list) -> None:
+    for r in range(1, 4):
+        row = [state[r + 4 * c] for c in range(4)]
+        row = row[-r:] + row[:-r]
+        for c in range(4):
+            state[r + 4 * c] = row[c]
+
+
+def _inv_sub_bytes(state: list) -> None:
+    for i in range(16):
+        state[i] = _INV_SBOX[state[i]]
+
+
+def _inv_mix_columns(state: list) -> None:
+    for c in range(4):
+        a = [state[r + 4 * c] for r in range(4)]
+        state[0 + 4 * c] = _gmul(a[0], 14) ^ _gmul(a[1], 11) ^ _gmul(a[2], 13) ^ _gmul(a[3], 9)
+        state[1 + 4 * c] = _gmul(a[0], 9) ^ _gmul(a[1], 14) ^ _gmul(a[2], 11) ^ _gmul(a[3], 13)
+        state[2 + 4 * c] = _gmul(a[0], 13) ^ _gmul(a[1], 9) ^ _gmul(a[2], 14) ^ _gmul(a[3], 11)
+        state[3 + 4 * c] = _gmul(a[0], 11) ^ _gmul(a[1], 13) ^ _gmul(a[2], 9) ^ _gmul(a[3], 14)
+
+
+def decrypt_block(block: bytes, words: list) -> bytes:
+    state = list(block)
+    _add_round_key(state, words, 14)
+    for rnd in range(13, 0, -1):
+        _inv_shift_rows(state)
+        _inv_sub_bytes(state)
+        _add_round_key(state, words, rnd)
+        _inv_mix_columns(state)
+    _inv_shift_rows(state)
+    _inv_sub_bytes(state)
+    _add_round_key(state, words, 0)
+    return bytes(state)
+
+
+def unpad(data: bytes) -> bytes:
+    n = data[-1]
+    if not 1 <= n <= 16 or data[-n:] != bytes([n]) * n:
+        raise ValueError("bad padding")
+    return data[:-n]
+
+
+def decrypt_cbc(key: bytes, iv: bytes, data: bytes) -> bytes:
+    assert len(key) == 32 and len(iv) == 16 and len(data) % 16 == 0
+    words = _expand_key(key)
+    out = bytearray()
+    prev = iv
+    for i in range(0, len(data), 16):
+        blk = data[i : i + 16]
+        out += bytes(a ^ b for a, b in zip(decrypt_block(blk, words), prev))
+        prev = blk
+    return unpad(bytes(out))
+
+
 def hashlib_pbkdf2(passphrase: str, salt: bytes, iterations: int) -> bytes:
     import hashlib
 
