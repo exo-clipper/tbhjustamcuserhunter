@@ -7,7 +7,7 @@ on:
     workflows: ["watch"]
     types: [completed]
 permissions:
-  contents: read
+  contents: write
 concurrency:
   group: pages-publish
   cancel-in-progress: true
@@ -16,19 +16,13 @@ jobs:
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
       - name: find latest successful watch run
         id: prev
         continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           RID=$(gh api "repos/${{ github.repository }}/actions/workflows/watch.yml/runs?per_page=20" \
             --jq '[.workflow_runs[] | select(.conclusion=="success")][0].id // ""')
@@ -43,15 +37,19 @@ jobs:
           merge-multiple: true
           github-token: ${{ github.token }}
           run-id: ${{ steps.prev.outputs.run_id }}
-      - name: assemble site
+      - name: push to gh-pages
         run: |
-          mkdir site
-          cp docs/index.html site/
-          cp frags/*.data.js site/ 2>/dev/null || echo "no fragments yet"
-          ls site/
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: site
-      - id: deploy
-        uses: actions/deploy-pages@v4
+          git config user.name "sniper-bot"
+          git config user.email "sniper-bot@users.noreply.github.com"
+          git fetch origin gh-pages 2>/dev/null || true
+          git switch gh-pages 2>/dev/null || git switch --orphan gh-pages
+          rm -f shard_*.data.js index.html
+          cp docs/index.html .
+          ls frags/*.data.js >/dev/null 2>&1 && cp frags/shard_*.data.js . || echo "no fragments yet"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "nothing changed"
+          else
+            git commit -m "publish latest radar data"
+            git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" gh-pages
+          fi
