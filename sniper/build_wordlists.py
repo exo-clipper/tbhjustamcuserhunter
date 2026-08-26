@@ -27,9 +27,11 @@ URLS = {
 }
 
 BLOCKLIST = {
-    "anal", "anus", "arse", "bitch", "boner", "clit", "cock", "cunt", "dick",
-    "dild", "fuck", "jizz", "kike", "nigg", "penis", "porn", "puss", "rape",
-    "shit", "slut", "spic", "twat", "wank", "whor", "fagg", "dyke", "homo",
+    "anal", "anus", "arse", "bitch", "boner", "clit", "cock", "cum",
+    "cunt", "dago", "dick", "dild", "dyke", "fag", "fags", "fapp",
+    "fuck", "gook", "homo", "japs", "jizz", "kike", "kys", "nigg",
+    "orgy", "penis", "porn", "prick", "pube", "puss", "queef", "rape",
+    "semen", "shit", "skank", "slut", "spic", "twat", "wank", "whor",
 }
 
 BRANDS = {
