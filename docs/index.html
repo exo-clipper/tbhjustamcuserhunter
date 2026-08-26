@@ -276,6 +276,7 @@
 <script>
 "use strict";
 const SHARDS = 18, PBKF_ITER = 1200000, CARD_CAP = 400, LOG_CAP = 250;
+const LEGACY_ITER = 120000;  // shim: blobs from a shard still on older code
 const POLL_MS = 12000;       // the feed is a branch, not a Pages build
 const NEW_FOR = 180;         // seconds a find keeps its NEW badge
 const STALE_AFTER = 420;     // no scan in this long = amber dot
@@ -321,17 +322,18 @@ function b64ToBytes(b) {
 // sniper/settings.py KDF_ITERATIONS, or nothing decrypts.
 const KEYS = new Map();   // pass|salt -> Promise<CryptoKey>
 
-async function deriveKey(pass, salt) {
+async function deriveKey(pass, salt, iters) {
   // the salt is fixed server-side, so this runs ~once per session instead of
   // once per shard per poll; cache the PROMISE so the 18 shards that unlock
   // together share one derivation rather than each paying for their own
-  const id = pass + "|" + Array.from(salt, b => b.toString(16).padStart(2, "0")).join("");
+  const id = iters + "|" + pass + "|" +
+    Array.from(salt, b => b.toString(16).padStart(2, "0")).join("");
   let job = KEYS.get(id);
   if (!job) {
     job = crypto.subtle
       .importKey("raw", enc.encode(pass), "PBKDF2", false, ["deriveKey"])
       .then(km => crypto.subtle.deriveKey(
-        { name: "PBKDF2", salt, iterations: PBKF_ITER, hash: "SHA-256" },
+        { name: "PBKDF2", salt, iterations: iters, hash: "SHA-256" },
         km, { name: "AES-CBC", length: 256 }, false, ["decrypt"]
       ));
     KEYS.set(id, job);
@@ -342,9 +344,19 @@ async function deriveKey(pass, salt) {
 async function decryptBlob(b64, pass) {
   const raw = b64ToBytes(b64);
   const salt = raw.slice(0, 16), iv = raw.slice(16, 32), ct = raw.slice(32);
-  const key = await deriveKey(pass, salt);
-  const pt = await crypto.subtle.decrypt({ name: "AES-CBC", iv }, key, ct);
-  return JSON.parse(new TextDecoder().decode(pt));
+  // LEGACY_ITER is a transition shim: a shard still running older code writes
+  // blobs at the old work factor, and refusing them would blank the panel for
+  // no security gain (a weak blob is weak whether or not we read it). Safe to
+  // delete once every feed-* branch has been rewritten by current code.
+  for (const iters of [PBKF_ITER, LEGACY_ITER]) {
+    try {
+      const key = await deriveKey(pass, salt, iters);
+      const pt = await crypto.subtle.decrypt({ name: "AES-CBC", iv }, key, ct);
+      return JSON.parse(new TextDecoder().decode(pt));
+    } catch (e) {
+      if (iters === LEGACY_ITER) throw e;
+    }
+  }
 }
 
 // pull every shard's branch straight off raw.githubusercontent; a missing

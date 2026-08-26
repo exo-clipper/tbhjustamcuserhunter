@@ -136,6 +136,9 @@ device, so it is typed once, not daily.
   (`settings.FEED_SALT`): with one target, a random salt would buy nothing while
   forcing the browser to re-derive on every 12 s poll, which is what capped the
   work factor before. The IV is still fresh per push.
+  (`LEGACY_ITER` in the panel is a temporary shim that also accepts blobs from a
+  shard still running pre-hardening code, so a slow rollout cannot blank the
+  panel. Delete it once every `feed-*` branch has been rewritten.)
 - The panel derives the key **once per session** and caches it, so the poll is
   free and unlock stays ~0.2 s.
 - Every subprocess line printed by `main.py` goes through `_redact()`. The push

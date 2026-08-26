@@ -35,7 +35,12 @@ jobs:
           fi
           # legacy per-shard fragments: the panel reads the feed branches now
           rm -rf shard_*.data.js frags index.html
-          git show origin/main:docs/index.html > index.html
+          # Deliberately the CURRENT tip of main, not the sha that triggered
+          # this run. A run can sit queued for hours (GitHub incidents do
+          # happen), and publishing a stale panel over a newer one is worse
+          # than publishing nothing.
+          git fetch --depth 1 origin main
+          git show FETCH_HEAD:docs/index.html > index.html
           touch .nojekyll
           git add -A
           if git diff --cached --quiet; then
