@@ -34,6 +34,22 @@ FLUSH_MIN_GAP = 15.0        # floor between pushes when finds keep landing
 FLUSH_HEARTBEAT = 240.0     # push anyway, so "last scan" stays honest
 STAGGER_PER_SHARD = 3.0     # spread the fleet's heartbeats out a little
 
+# --- panel crypto --------------------------------------------------------------
+# The repo has to stay public (that is what makes 24/7 Actions free), so every
+# feed blob is PUBLIC CIPHERTEXT. The passphrase is the only thing protecting
+# it, which is why the work factor is high and why a short passphrase is a bad
+# idea: an attacker with the blob can guess offline as fast as their hardware
+# allows.
+#
+# The salt is deliberately CONSTANT rather than random-per-push. Salt only
+# stops one attacker from amortising work across many targets, and there is
+# exactly one target here - while a fresh salt every 15s would force the panel
+# to re-run the KDF on every poll, capping how high the work factor could go.
+# Constant salt + one derivation per browser session buys 10x the iterations.
+# It must stay 16 bytes: the blob layout is salt(16) | iv(16) | ciphertext.
+KDF_ITERATIONS = 1_200_000   # keep docs/index.html PBKF_ITER identical
+FEED_SALT = bytes.fromhex("9f2b7c41a6d05e83b1c4f70926a8d35c")
+
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"

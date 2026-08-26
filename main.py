@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import os
 import random
+import re
 import shutil
 import subprocess
 import sys
@@ -81,6 +82,19 @@ def _git(args: list[str], cwd: str | None = None) -> subprocess.CompletedProcess
     return subprocess.run(["git"] + args, capture_output=True, text=True, cwd=cwd)
 
 
+def _redact(text: str) -> str:
+    """Actions logs on a public repo are world-readable and git happily quotes
+    the remote URL back at you in error messages. That URL carries the push
+    token, so nothing from a subprocess gets printed unfiltered - GitHub's own
+    secret masking is a nice backstop, not something to depend on."""
+    out = re.sub(r"(https?://)[^\s/@]*:[^\s/@]*@", r"\1***:***@", text)
+    for var in ("GH_TOKEN", "GITHUB_TOKEN", "DASH_PASSPHRASE"):
+        val = os.environ.get(var, "").strip()
+        if len(val) > 3:
+            out = out.replace(val, "***")
+    return out
+
+
 def _feed_remote() -> str:
     """Where feed branches are pushed. FEED_REMOTE exists so the push path
     can be exercised against a local bare repo in tests."""
@@ -125,9 +139,9 @@ def push_feed(blob_path: str, idx: int) -> bool:
                 return True
             if attempt == 2:
                 print(f"[flush] shard {idx}: push failed: "
-                      f"{push.stderr.strip()[-200:]}", flush=True)
+                      f"{_redact(push.stderr.strip())[-200:]}", flush=True)
         except OSError as e:
-            print(f"[flush] shard {idx}: {e}", flush=True)
+            print(f"[flush] shard {idx}: {_redact(str(e))}", flush=True)
         finally:
             shutil.rmtree(work, ignore_errors=True)
         time.sleep(2.0 + random.random() * 3.0)

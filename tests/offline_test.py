@@ -321,6 +321,16 @@ def test_feed() -> list[str]:
     check("round-trips through decrypt",
           (back["shard"], [r["n"] for r in back["free"]]), (5, ["zelda"]))
 
+    # the panel derives its own key; if either side's parameters drift the feed
+    # silently stops decrypting, so pin them to each other here
+    panel = (root / "docs" / "index.html").read_text(encoding="utf-8")
+    m = re.search(r"PBKF_ITER\s*=\s*(\d+)", panel)
+    check("panel KDF iterations match the server",
+          int(m.group(1)) if m else None, settings.KDF_ITERATIONS)
+    check("blob carries the agreed salt", raw[:16], settings.FEED_SALT)
+    second = exporter._seal(payload, "pw")
+    check("same payload re-encrypts differently (fresh IV)", second == blob, False)
+
     check("fingerprint stable while nothing changes",
           exporter.peek_fingerprint(st, 5), fp)
     st.add_names("minecraft", ["wolf"])
@@ -336,6 +346,67 @@ def test_feed() -> list[str]:
     for p in (db, out):
         if p.exists():
             p.unlink()
+    return fails
+
+
+def test_no_secrets_in_tree() -> list[str]:
+    """The repo is public and history is forever, so this is a tripwire, not a
+    formality: it fails the build before a credential can be pushed."""
+    fails = []
+    root = Path(__file__).parent.parent
+
+    def check(label, got, want):
+        ok = got == want
+        print(f"{'PASS' if ok else 'FAIL'} {label}: got {got!r}")
+        if not ok:
+            fails.append(label)
+
+    # real credential shapes, not vague words: github tokens, private keys,
+    # slack/telegram/aws keys, and hardcoded secret assignments
+    patterns = [
+        (r"gh[pousr]_[A-Za-z0-9]{20,}", "github token"),
+        (r"github_pat_[A-Za-z0-9_]{20,}", "github fine-grained pat"),
+        (r"-----BEGIN [A-Z ]*PRIVATE KEY-----", "private key"),
+        (r"AKIA[0-9A-Z]{16}", "aws key id"),
+        (r"xox[baprs]-[A-Za-z0-9-]{10,}", "slack token"),
+        (r"\b\d{8,10}:AA[A-Za-z0-9_-]{30,}", "telegram bot token"),
+        (r"(?i)\b(pass(phrase|word)?|secret|token|api_?key)\b\s*[:=]\s*"
+         r"['\"][^'\"\n]{6,}['\"]", "hardcoded credential"),
+    ]
+    skip_dirs = {".git", ".venv", "__pycache__", "_paneltest", "state",
+                 "frag", "frag_live"}
+    text_ext = {".py", ".html", ".yml", ".yaml", ".json", ".md", ".txt",
+                ".js", ".css", ".sh", ".cfg", ".toml", ".ini", ""}
+    hits = []
+    scanned = 0
+    for path in root.rglob("*"):
+        if not path.is_file() or path.suffix.lower() not in text_ext:
+            continue
+        if skip_dirs & set(p.name for p in path.parents):
+            continue
+        if path.name == Path(__file__).name:   # this file holds the patterns
+            continue
+        try:
+            body = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        scanned += 1
+        for rx, what in patterns:
+            for m in re.finditer(rx, body):
+                line = body[: m.start()].count("\n") + 1
+                hits.append(f"{path.relative_to(root).as_posix()}:{line} {what}")
+    print(f"     scanned {scanned} text files for credential patterns")
+    check("no credentials in the working tree", hits, [])
+
+    # the panel is served to anyone; the passphrase must live only in the secret
+    panel = (root / "docs" / "index.html").read_text(encoding="utf-8")
+    check("panel ships no passphrase",
+          bool(re.search(r"(?i)snipe_key\s*[:=]\s*['\"].+['\"]", panel)), False)
+
+    # and the ignore rules that keep it that way must not regress
+    ignore = (root / ".gitignore").read_text(encoding="utf-8").split()
+    for need in ("*.db", ".env", "secrets/", "*.pem", "*.key", "*.log"):
+        check(f"gitignore covers {need}", need in ignore, True)
     return fails
 
 
@@ -360,6 +431,7 @@ async def main() -> int:
     fails = []
     fails += test_word_rules()
     fails += test_blocklist()
+    fails += test_no_secrets_in_tree()
     fails += await test_checker(port)
     fails += test_store()
     fails += test_exporter()

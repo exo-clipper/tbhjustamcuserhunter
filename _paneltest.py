@@ -4,7 +4,9 @@ so the render path can be driven in a browser without github or a live run.
   python _paneltest.py           # build ./_paneltest/
   python _paneltest.py --bump    # add one fresh find to shard 0 (tests NEW badge)
 
-then open http://localhost:8765/index.html?feed=./  and unlock with "testpass".
+then open http://localhost:8765/index.html?feed=./ and unlock with the fixture
+key printed on build (PANEL_TEST_PASS overrides it). Never the real passphrase:
+this writes plain files into a working directory.
 """
 import os
 import shutil
@@ -17,7 +19,9 @@ from sniper import exporter
 from sniper.store import Store
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_paneltest")
-PASS = "testpass"
+# not a credential: it encrypts made-up fixture data written into a working
+# directory. Never put the real passphrase here.
+FIXTURE_KEY = os.environ.get("PANEL_TEST_PASS") or "fixture-only-not-a-secret"
 
 # shard -> (claimable, taken, unknown, locked); blocked names are planted on
 # purpose so the export filter can be seen working in the browser
@@ -68,13 +72,13 @@ def main() -> None:
             os.remove(db)
         store = seed(db, spec, now)
         blob = os.path.join(OUT, f"feed-{idx}", "frag.txt")
-        fp = exporter.write_feed(store, idx, blob, PASS)
+        fp = exporter.write_feed(store, idx, blob, FIXTURE_KEY)
         payload = exporter.build_payload(store, idx, exporter.FEED_EVENTS)
         store.conn.close()
         print(f"feed-{idx}: {os.path.getsize(blob)}B fp={fp} "
               f"free={[r['n'] for r in payload['free']]} "
               f"counts={payload['counts']}")
-    print(f"\nserved from {OUT}; passphrase {PASS!r}")
+    print(f"\nserved from {OUT}; unlock with {FIXTURE_KEY!r}")
 
 
 if __name__ == "__main__":

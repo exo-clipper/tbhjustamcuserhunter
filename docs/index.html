@@ -88,6 +88,13 @@
     gap: 12px; flex-wrap: wrap; margin-bottom: 20px;
   }
   .brand { display: flex; align-items: center; gap: 11px; }
+  #lock {
+    margin-left: auto; padding: 7px 13px; border-radius: 9px; cursor: pointer;
+    font: 600 11px/1 ui-monospace, monospace; letter-spacing: .12em;
+    color: var(--dim); background: rgba(255, 255, 255, .04);
+    border: 1px solid rgba(255, 255, 255, .12);
+  }
+  #lock:hover { color: var(--red); border-color: rgba(248, 113, 113, .45); }
   .brand .mark {
     width: 38px; height: 38px; border-radius: 11px;
     display: grid; place-items: center; font-size: 18px; color: var(--cyan);
@@ -245,6 +252,7 @@
   <header>
     <div class="brand"><div class="mark">&#9670;</div><h1>SNIPER</h1></div>
     <div class="pill"><span class="dot" id="liveDot"></span><span id="liveTxt">connecting&hellip;</span></div>
+    <button id="lock" title="forget the passphrase on this device">LOCK</button>
   </header>
 
   <div class="stats">
@@ -267,7 +275,7 @@
 
 <script>
 "use strict";
-const SHARDS = 18, PBKF_ITER = 120000, CARD_CAP = 400, LOG_CAP = 250;
+const SHARDS = 18, PBKF_ITER = 1200000, CARD_CAP = 400, LOG_CAP = 250;
 const POLL_MS = 12000;       // the feed is a branch, not a Pages build
 const NEW_FOR = 180;         // seconds a find keeps its NEW badge
 const STALE_AFTER = 420;     // no scan in this long = amber dot
@@ -308,12 +316,27 @@ function b64ToBytes(b) {
   return out;
 }
 
+// The feed blobs are public ciphertext, so the passphrase is the only thing
+// guarding them - hence the deliberately expensive KDF. Must stay identical to
+// sniper/settings.py KDF_ITERATIONS, or nothing decrypts.
+const KEYS = new Map();   // pass|salt -> Promise<CryptoKey>
+
 async function deriveKey(pass, salt) {
-  const km = await crypto.subtle.importKey("raw", enc.encode(pass), "PBKDF2", false, ["deriveKey"]);
-  return crypto.subtle.deriveKey(
-    { name: "PBKDF2", salt, iterations: PBKF_ITER, hash: "SHA-256" },
-    km, { name: "AES-CBC", length: 256 }, false, ["decrypt"]
-  );
+  // the salt is fixed server-side, so this runs ~once per session instead of
+  // once per shard per poll; cache the PROMISE so the 18 shards that unlock
+  // together share one derivation rather than each paying for their own
+  const id = pass + "|" + Array.from(salt, b => b.toString(16).padStart(2, "0")).join("");
+  let job = KEYS.get(id);
+  if (!job) {
+    job = crypto.subtle
+      .importKey("raw", enc.encode(pass), "PBKDF2", false, ["deriveKey"])
+      .then(km => crypto.subtle.deriveKey(
+        { name: "PBKDF2", salt, iterations: PBKF_ITER, hash: "SHA-256" },
+        km, { name: "AES-CBC", length: 256 }, false, ["decrypt"]
+      ));
+    KEYS.set(id, job);
+  }
+  return job;
 }
 
 async function decryptBlob(b64, pass) {
@@ -342,8 +365,8 @@ async function fetchFeed() {
   return Object.keys(BLOBS).length;
 }
 
-// only shards whose ciphertext actually changed pay for a PBKDF2 derivation,
-// so a 12s poll stays cheap even with 18 shards
+// with a fixed salt the key is derived once, so a 12s poll costs nothing;
+// shards whose ciphertext is unchanged are skipped entirely
 async function decryptAll() {
   await Promise.all(Object.entries(BLOBS).map(async ([k, b]) => {
     if (RAW[k] && RAW[k].__blob === b) return;
@@ -494,6 +517,15 @@ $("unlock").addEventListener("click", async () => {
   }
 });
 $("pass").addEventListener("keydown", e => { if (e.key === "Enter") $("unlock").click(); });
+
+// The passphrase is remembered so you are not retyping it every visit, which
+// means anyone at this device can open the panel. LOCK forgets it. Reloading
+// rather than just hiding the app also drops the derived key and every
+// decrypted payload out of memory.
+$("lock").addEventListener("click", () => {
+  localStorage.removeItem("snipe_key");
+  location.reload();
+});
 
 (async function boot() {
   $("gateErr").textContent = "fetching feed\u2026";

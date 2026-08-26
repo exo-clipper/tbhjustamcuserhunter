@@ -1,6 +1,29 @@
 .venv/
 __pycache__/
 *.pyc
+
+# --- nothing sensitive may ever reach a public repo ---------------------------
+# Broad by design: a pattern here is cheaper than a rewritten history. The repo
+# is public, so anything committed is public forever, even after a delete.
+*.db
+*.db-journal
+*.db-wal
+*.env
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.log
+secrets/
+**/secrets/
+*_token*
+*passphrase*
+id_rsa*
+id_ed25519*
+
+# --- local state / build output -----------------------------------------------
 sniper/data/ig_sessionid.txt
 sniper/data/sniper.db*
 sniper/data/sniper_shard_*.db*

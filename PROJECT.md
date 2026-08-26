@@ -53,7 +53,7 @@ Phone pushes were removed by choice.
 4. Any throttle signal (429, or 8 junk responses in a row) trips a **circuit
    breaker** that pauses that shard with escalating cooldowns (5 min → 6 h max).
 5. **Findings go live in seconds, not hours.** Each shard encrypts its own
-   snapshot (**AES-256-CBC**, PBKDF2-SHA256 120k iterations) and force-pushes it
+   snapshot (**AES-256-CBC**, PBKDF2-SHA256 1.2M iterations) and force-pushes it
    to its own branch `feed-<n>` as a single file `frag.txt`, the instant its
    visible picture changes (floor: 15 s apart) plus a 4-min heartbeat so the
    "last scan" pill stays honest. The panel polls all 18 branches straight off
@@ -103,6 +103,62 @@ immediate effect with no commit.
 
 ---
 
+## Security model (read this before changing the passphrase)
+
+**What is public, unavoidably:** the repo, the panel HTML, the Actions logs, and
+the `feed-*` branches. Those branches hold the finds, so they are encrypted —
+but the *ciphertext* is downloadable by anyone. Going private is not an option:
+private repos are capped at ~2,000 Actions minutes/month, which cannot run
+18 shards around the clock for free.
+
+**Therefore the passphrase is the entire defence, and it is attacked offline.**
+Nobody has to talk to the panel to guess: they grab a blob and grind at their
+own hardware's speed. Measured on one ordinary CPU core:
+
+| Passphrase | Time to try every possibility |
+|---|---|
+| 4-digit PIN (10,000 options) | **~77 min on one CPU core; seconds on a gaming GPU** |
+| 4 random lowercase letters | ~2 days on one core |
+| 3 random words + a digit | longer than the universe has been around |
+
+The panel currently uses a 4-digit PIN by request. That is a *deliberate*
+trade of secrecy for convenience, and it is survivable because the worst case
+is someone learning which names are claimable — no account, payment method or
+credential is behind that door. If a competitor sniping your finds matters,
+switch `DASH_PASSPHRASE` to three random words; the panel remembers it per
+device, so it is typed once, not daily.
+
+**What is done to make the rest tight:**
+
+- PBKDF2-SHA256 at **1.2M iterations** (`settings.KDF_ITERATIONS`, mirrored by
+  `PBKF_ITER` in `docs/index.html` — change both or nothing decrypts). Ten
+  times the old cost per guess. The KDF salt is fixed on purpose
+  (`settings.FEED_SALT`): with one target, a random salt would buy nothing while
+  forcing the browser to re-derive on every 12 s poll, which is what capped the
+  work factor before. The IV is still fresh per push.
+- The panel derives the key **once per session** and caches it, so the poll is
+  free and unlock stays ~0.2 s.
+- Every subprocess line printed by `main.py` goes through `_redact()`. The push
+  URL carries `x-access-token:<token>`, git quotes URLs back in errors, and
+  Actions logs on a public repo are world-readable — GitHub's own masking is
+  treated as a backstop, not the defence.
+- The passphrase is remembered in `localStorage` so you are not retyping it.
+  **LOCK** in the panel header forgets it and reloads, dropping the derived key
+  and every decrypted payload out of memory. Use it on a shared machine.
+- `tests/offline_test.py::test_no_secrets_in_tree` greps the working tree for
+  real credential shapes (`gh*_`, `github_pat_`, PEM private keys, AWS/Slack/
+  Telegram tokens, hardcoded `password = "..."`) and asserts the `.gitignore`
+  rules that keep DBs, `.env`, `secrets/`, keys and logs out of the repo.
+- Repo secrets are exactly one: `DASH_PASSPHRASE`. `ALERT_NTFY` was deleted
+  with the notification feature. Pages enforces HTTPS, the default workflow
+  token is read-only, and there are no deploy keys or webhooks.
+
+**Verified clean** (full-history audit, every ref, every commit): no token, key,
+`.db`, `.env` or `secrets/` file has ever been committed, and every fragment
+ever published was ciphertext.
+
+---
+
 ## Reality checks worth remembering
 
 - **Minecraft usernames are 3–16 chars** ([a-z0-9_]); we watch exactly-4-letter
@@ -111,11 +167,12 @@ immediate effect with no commit.
 - When someone changes off a name, the old name is locked **37 days**
   (30-day rename cooldown + 7-day grace) before anyone can claim it.
 - The panel gate is client-side only: fragments are AES-256 encrypted and the
-  key lives solely in the GitHub secret. Still, treat panel contents as
-  "behind a locked door", not a vault — anyone patient enough could brute-force
-  a weak passphrase offline, so keep it long and random.
+  key lives solely in the GitHub secret. Treat panel contents as "behind a
+  locked door", not a vault — see the security-model section for the actual
+  brute-force numbers.
 - The `feed-*` branches are **public ciphertext**. That is fine (that is the
-  point of encrypting them) but it is also why the passphrase must be strong.
+  point of encrypting them) but it is also why the passphrase length matters
+  more than anything else in this project.
 - **20 concurrent jobs is the hard ceiling** on GitHub Free. Never raise the
   shard count to 20: the panel deploy then has nowhere to run and the whole
   publish path silently queues forever. That exact mistake caused the outage
@@ -151,6 +208,12 @@ immediate effect with no commit.
    end to end), 18 shards, and per-shard concurrency groups instead of a chain.
 7. **Profanity blocklist** (`sniper/data/blocked.txt` + `BLOCK_EXTRA`): names
    Mojang's filter refuses are no longer watched or shown.
+8. **Security hardening.** Full-history credential audit (clean); KDF raised
+   120k → 1.2M iterations with a fixed salt and a cached key so the panel got
+   *faster* while each guess got 10x dearer; `_redact()` on all subprocess
+   output so the push token cannot reach a public log; a LOCK button; a
+   credential-shape tripwire in the test suite; broader `.gitignore`; stale
+   `ALERT_NTFY` secret deleted.
 
 ## File map
 
@@ -201,7 +264,9 @@ $env:PANEL_PASS="..."; .venv\Scripts\python.exe _verify_panel.py   # is the live
   instant effect, or `main.py block <word>` + commit `blocked.txt` to make it
   permanent.
 - **Change panel password:** update `DASH_PASSPHRASE`. Each shard re-encrypts
-  under the new key on its next push (seconds to ~4 min).
+  under the new key on its next push (seconds to ~4 min). The old passphrase
+  stops working on every device at that moment; press LOCK, then enter the new
+  one. Longer is strictly better — see the security-model section.
 - **Stop everything:** Settings → Actions → Disable workflows. Disabling the
   `watch` workflow is enough — the successor waves come from its own cron, so
   there is no chain to break separately.

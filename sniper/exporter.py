@@ -4,7 +4,7 @@ import json
 import os
 import time
 
-from . import aeslite
+from . import aeslite, settings
 from .blocklist import is_blocked
 
 # the feed is pushed every few seconds, so it carries only what the panel
@@ -68,14 +68,29 @@ def fingerprint(payload: dict) -> str:
     return hashlib.sha256(seed.encode()).hexdigest()[:16]
 
 
+_KEY_CACHE: dict[str, bytes] = {}
+
+
+def _key_for(passphrase: str) -> bytes:
+    """1.2M PBKDF2 iterations is ~0.5 s. A shard pushes every few seconds for
+    165 minutes under one unchanging passphrase, so derive once and keep it."""
+    key = _KEY_CACHE.get(passphrase)
+    if key is None:
+        key = aeslite.derive_key(passphrase, settings.FEED_SALT,
+                                 settings.KDF_ITERATIONS)
+        _KEY_CACHE[passphrase] = key
+    return key
+
+
 def _seal(payload: dict, passphrase: str) -> str:
-    salt = os.urandom(16)
+    # salt is fixed (see settings.FEED_SALT) but the IV is fresh every push, so
+    # two snapshots of the same data still encrypt to different ciphertext
     iv = os.urandom(16)
-    key = aeslite.derive_key(passphrase, salt)
     ct = aeslite.encrypt_cbc(
-        key, iv, json.dumps(payload, separators=(",", ":")).encode()
+        _key_for(passphrase), iv,
+        json.dumps(payload, separators=(",", ":")).encode(),
     )
-    return base64.b64encode(salt + iv + ct).decode()
+    return base64.b64encode(settings.FEED_SALT + iv + ct).decode()
 
 
 def _write(out_path: str, text: str) -> None:

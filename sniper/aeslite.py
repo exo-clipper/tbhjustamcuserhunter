@@ -103,7 +103,13 @@ def encrypt_cbc(key: bytes, iv: bytes, data: bytes) -> bytes:
     return bytes(out)
 
 
-def derive_key(passphrase: str, salt: bytes, iterations: int = 120000) -> bytes:
+def derive_key(passphrase: str, salt: bytes, iterations: int = 0) -> bytes:
+    """Default work factor comes from settings so no call site can silently
+    derive under the wrong one and write a blob the panel cannot open."""
+    if not iterations:
+        from .settings import KDF_ITERATIONS
+
+        iterations = KDF_ITERATIONS
     return hashlib_pbkdf2(passphrase, salt, iterations)
 
 
