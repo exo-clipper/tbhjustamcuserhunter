@@ -6,7 +6,7 @@ on:
     inputs:
       loop_minutes:
         description: "minutes each shard keeps watching"
-        default: "330"
+        default: "60"
 permissions:
   contents: read
 jobs:
@@ -28,7 +28,7 @@ jobs:
       EXTRA_NAMES: ${{ secrets.EXTRA_NAMES }}
       DASH_PASSPHRASE: ${{ secrets.DASH_PASSPHRASE }}
       GH_TOKEN: ${{ github.token }}
-      LOOP_MINUTES: ${{ github.event.inputs.loop_minutes || '330' }}
+      LOOP_MINUTES: ${{ github.event.inputs.loop_minutes || '60' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

@@ -1,11 +1,16 @@
 import base64
 import json
+import os
 import re
 import sys
 import urllib.request
 
 sys.path.insert(0, ".")
 from sniper.aeslite import decrypt_cbc, derive_key
+
+PASS = os.environ.get("PANEL_PASS", "")
+if not PASS:
+    sys.exit("set PANEL_PASS env var to the dashboard passphrase")
 
 BASE = "https://randomcharstohideprof.github.io/thetelehunter/"
 
@@ -25,14 +30,14 @@ for i in range(20):
     assert m, f"shard_{i}: no encrypted payload found"
     blob = base64.b64decode(m.group(2))
     salt, iv, ct = blob[:16], blob[16:32], blob[32:]
-    payload = json.loads(decrypt_cbc(derive_key("8008", salt), iv, ct))
+    payload = json.loads(decrypt_cbc(derive_key(PASS, salt), iv, ct))
     c = payload["counts"]
     total_tracked += c["total"]
     total_free += c["free"]
     shards += 1
     for f in payload["free"][:2]:
         sample.append(f["n"])
-print(f"decrypted shards: {shards}/20  (passphrase 8008 OK)")
+print(f"decrypted shards: {shards}/20  (passphrase OK)")
 print(f"tracked names   : {total_tracked:,}")
 print(f"claimable now   : {total_free}")
 if sample:

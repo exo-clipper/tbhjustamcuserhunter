@@ -19,7 +19,7 @@ no phone notifications — everything lands on the panel only.
 |---|---|
 | Repo | https://github.com/randomcharstohideprof/thetelehunter |
 | Panel | https://randomcharstohideprof.github.io/thetelehunter/ |
-| Panel passphrase | `8008` |
+| Panel passphrase | stored ONLY in the `DASH_PASSPHRASE` secret — never in this repo |
 | Cost | $0 forever |
 
 GitHub secrets: `DASH_PASSPHRASE` (panel key). Optional secret `EXTRA_NAMES`
@@ -80,8 +80,10 @@ Worst case for a genuinely-free name: it appears after one probe cycle
   the space is heavily squatted, which is precisely why watching pays.
 - When someone changes off a name, the old name is locked **37 days**
   (30-day rename cooldown + 7-day grace) before anyone can claim it.
-- The panel passphrase is only 4 digits — brute-forceable offline. Treat panel
-  contents as behind a locked door, not a vault.
+- The panel gate is client-side only: fragments are AES-256 encrypted and the
+  key lives solely in the GitHub secret. Still, treat panel contents as
+  "behind a locked door", not a vault — anyone patient enough could brute-force
+  a weak passphrase offline, so keep it long and random.
 - api.mojang.com occasionally throws **sporadic 403s** (known Mojang quirk);
   the checker tolerates them and only breaker-trips on sustained junk or 429s.
 - One shard occasionally dies to a transient GitHub runner error ("Set up job").

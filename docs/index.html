@@ -255,6 +255,8 @@
 const SHARDS = 20, PBKF_ITER = 120000, CARD_CAP = 400, LOG_CAP = 250;
 const $ = id => document.getElementById(id);
 const enc = new TextEncoder();
+const esc = s => String(s).replace(/[&<>"']/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
 let RAW = {};
 let KEY = null;
@@ -340,12 +342,12 @@ function rel(ts) {
 function cardHTML(f) {
   const confirmed = f.c ? rel(f.c) : rel(f.t);
   return `<div class="card l5">
-    <span class="len">${f.l}-LTR</span>
-    <div class="name mono">${f.n}</div>
+    <span class="len">${esc(f.l)}-LTR</span>
+    <div class="name mono">${esc(f.n)}</div>
     <div class="when" title="discovered ${rel(f.t)}">&#10003; confirmed free ${confirmed}</div>
     <div class="acts">
       <a class="hot" href="https://www.minecraft.net/en-us/profile" target="_blank" rel="noopener">CLAIM &#8599;</a>
-      <a href="https://namemc.com/search?q=${f.n}" target="_blank" rel="noopener">NAMEMC</a>
+      <a href="https://namemc.com/search?q=${encodeURIComponent(f.n)}" target="_blank" rel="noopener">NAMEMC</a>
     </div>
   </div>`;
 }
@@ -381,7 +383,7 @@ function render() {
     const kk = e.m + "|" + e.n + "|" + e.ts;
     if (seen.has(kk)) continue;
     seen.add(kk);
-    logs.push(`<div class="lg ${logClass(e.m)}"><span class="t">${new Date(e.ts * 1000).toLocaleTimeString()}</span><span class="m">${e.m}${e.n ? " @" + e.n : ""}</span></div>`);
+    logs.push(`<div class="lg ${logClass(e.m)}"><span class="t">${new Date(e.ts * 1000).toLocaleTimeString()}</span><span class="m">${esc(e.m)}${e.n ? " @" + esc(e.n) : ""}</span></div>`);
     if (logs.length >= LOG_CAP) break;
   }
   $("logs").innerHTML = logs.join("") || '<div class="empty">no activity logged yet</div>';
