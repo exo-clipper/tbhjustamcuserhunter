@@ -8,7 +8,7 @@ from . import aeslite
 
 def build_payload(store, shard_idx: int) -> dict:
     conn = store.conn
-    counts = {"total": 0, "free": 0, "taken": 0, "unknown": 0}
+    counts = {"total": 0, "free": 0, "taken": 0, "unknown": 0, "locked": 0}
     free = []
     last_checked = 0.0
     for name, avail, lc, ca in conn.execute(
@@ -22,6 +22,8 @@ def build_payload(store, shard_idx: int) -> dict:
             free.append({"n": name, "t": int(ca), "c": int(lc), "l": len(name)})
         elif avail == 0:
             counts["taken"] += 1
+        elif avail == 2:
+            counts["locked"] += 1
         else:
             counts["unknown"] += 1
     free.sort(key=lambda r: -r["t"])

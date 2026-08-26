@@ -1,8 +1,8 @@
 from .base import AVAILABLE, TAKEN, UNKNOWN, BaseChecker, RateLimited
-from .telegram import TelegramChecker
+from .minecraft import MinecraftChecker
 
 CHECKERS = {
-    "telegram": TelegramChecker,
+    "minecraft": MinecraftChecker,
 }
 
 __all__ = [
@@ -11,6 +11,6 @@ __all__ = [
     "UNKNOWN",
     "BaseChecker",
     "RateLimited",
-    "TelegramChecker",
+    "MinecraftChecker",
     "CHECKERS",
 ]

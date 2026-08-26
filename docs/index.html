@@ -219,7 +219,7 @@
 <div id="gate">
   <div class="gatecard" id="gatecard">
     <div class="logo"><div class="mark">&#9670;</div><h1>SNIPER</h1></div>
-    <p class="sub">PRIVATE TELEGRAM HANDLE RADAR</p>
+    <p class="sub">PRIVATE MINECRAFT NAME RADAR &middot; 4-LETTER WATCH</p>
     <input type="password" id="pass" placeholder="passphrase" autocomplete="off">
     <button class="primary" id="unlock">UNLOCK</button>
     <div id="gateErr"></div>
@@ -341,19 +341,20 @@ function cardHTML(f) {
   const confirmed = f.c ? rel(f.c) : rel(f.t);
   return `<div class="card l5">
     <span class="len">${f.l}-LTR</span>
-    <div class="name mono">@${f.n}</div>
-    <div class="when" title="discovered ${rel(f.t)}">&#10003; confirmed ${confirmed}</div>
+    <div class="name mono">${f.n}</div>
+    <div class="when" title="discovered ${rel(f.t)}">&#10003; confirmed free ${confirmed}</div>
     <div class="acts">
-      <a class="hot" href="https://t.me/${f.n}" target="_blank" rel="noopener">CLAIM &#8599;</a>
-      <a href="https://fragment.com/username/${f.n}" target="_blank" rel="noopener">FRAG</a>
+      <a class="hot" href="https://www.minecraft.net/en-us/profile" target="_blank" rel="noopener">CLAIM &#8599;</a>
+      <a href="https://namemc.com/search?q=${f.n}" target="_blank" rel="noopener">NAMEMC</a>
     </div>
   </div>`;
 }
 
 function logClass(m) {
-  if (m.startsWith("became available")) return "free";
+  if (m.startsWith("claimable")) return "free";
   if (m.startsWith("breaker")) return "err";
   if (m.startsWith("throttle")) return "warn";
+  if (m.startsWith("gone") || m.startsWith("reclaimed")) return "warn";
   return "info";
 }
 
@@ -368,7 +369,7 @@ function render() {
   $("cl").textContent = d.events.length;
 
   $("gridFree").innerHTML = d.frees.slice(0, CARD_CAP).map(cardHTML).join("") ||
-    '<div class="empty" style="grid-column:1/-1">nothing free yet &mdash; radar sweeping</div>';
+    '<div class="empty" style="grid-column:1/-1">radar sweeping &mdash; nothing claimable right now</div>';
   if (d.frees.length > CARD_CAP) {
     $("gridFree").insertAdjacentHTML("beforeend",
       `<div class="empty" style="grid-column:1/-1">+ ${(d.frees.length - CARD_CAP).toLocaleString()} more &mdash; showing newest ${CARD_CAP}</div>`);

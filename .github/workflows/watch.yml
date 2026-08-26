@@ -1,14 +1,20 @@
 name: watch
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "*/15 * * * *"   # watchdog; the chain below keeps it continuous
   workflow_dispatch: {}
+  workflow_run:
+    workflows: ["watch"]
+    types: [completed]
+concurrency:
+  group: watch-chain
+  cancel-in-progress: false
 permissions:
   contents: read
 jobs:
-  telegram:
+  minecraft:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       max-parallel: 20
@@ -23,9 +29,6 @@ jobs:
       SHARD_COUNT: "20"
       EXTRA_NAMES: ${{ secrets.EXTRA_NAMES }}
       DASH_PASSPHRASE: ${{ secrets.DASH_PASSPHRASE }}
-      ALERT_NTFY: ${{ secrets.ALERT_NTFY }}
-      ALERT_TG_TOKEN: ${{ secrets.ALERT_TG_TOKEN }}
-      ALERT_TG_CHAT: ${{ secrets.ALERT_TG_CHAT }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
@@ -52,7 +55,7 @@ jobs:
           github-token: ${{ github.token }}
           run-id: ${{ steps.prev.outputs.run_id }}
       - run: python main.py init
-      - run: python main.py run --minutes 8 --quiet
+      - run: python main.py run --minutes 50 --quiet
       - run: python main.py export --out frag/shard_${{ matrix.shard }}.data.js
       - name: upload state
         uses: actions/upload-artifact@v4
@@ -68,7 +71,7 @@ jobs:
           if-no-files-found: ignore
 
   publish:
-    needs: telegram
+    needs: minecraft
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 10

@@ -1,12 +1,15 @@
-# SNIPER — Telegram Username Radar
+# SNIPER — Minecraft 4-Letter Name Radar
 
 ## The goal
 
-Watch Telegram around the clock for **claimable 5-letter usernames** (real English words,
-Web3/crypto slang, brand names, first names) and get **notified on your phone within minutes**
-of one becoming free — plus a **private dashboard** to browse everything found.
+Watch Mojang's API around the clock for **claimable readable 4-letter Minecraft
+usernames** (English words, first names, brands, natural double-letter patterns)
+and surface them on a **private dashboard** the moment they are truly claimable —
+so you can grab them from your Minecraft profile without ever walking into a
+"username unavailable" surprise.
 
-Runs 100% on GitHub's free tier. Your PC is never needed.
+Runs 100% on GitHub's free tier. Your PC is never needed. No billing, no card,
+no phone notifications — everything lands on the panel only.
 
 ---
 
@@ -17,88 +20,103 @@ Runs 100% on GitHub's free tier. Your PC is never needed.
 | Repo | https://github.com/randomcharstohideprof/thetelehunter |
 | Panel | https://randomcharstohideprof.github.io/thetelehunter/ |
 | Panel passphrase | `8008` |
-| Phone alerts (ntfy topic) | `tlh-jE2LsHToH7Lt` |
 | Cost | $0 forever |
 
-GitHub secrets already configured: `DASH_PASSPHRASE` (panel key), `ALERT_NTFY` (push topic).
-Optional secret `EXTRA_NAMES` (comma-separated) adds personal names to watch — every shard
-checks them each cycle, so they're scanned extra often.
+GitHub secrets: `DASH_PASSPHRASE` (panel key). Optional secret `EXTRA_NAMES`
+(comma-separated) adds personal names; unknown-history names are verified via
+the history probe before they are shown. Phone pushes were removed by choice.
 
 ---
 
 ## How it works
 
-1. A GitHub Action fires **every 5 minutes** (`*/5` cron).
-2. It fans out into **20 parallel "shards"**, each with its own runner IP, each politely
-   checking its slice of the watchlist (~1 request / 0.75s ± jitter).
-3. A name is FREE when `t.me/<name>` serves no owner page. Any throttle signal trips a
-   **circuit breaker** that pauses that shard with escalating cooldowns (15 min → 6 h max).
-4. Each shard encrypts its findings (**AES-256-CBC**, PBKDF2-SHA256 120k iterations) and
-   uploads them as private artifacts.
-5. When all shards finish, a `publish` job merges the encrypted fragments and deploys them
-   to GitHub Pages alongside the single-file dashboard.
-6. Your phone receives ntfy pushes the *instant* a flip is detected during any scan:
-   `new 5 letter username available` + the handle + link.
+1. A GitHub Action chain keeps **20 parallel shards** alive ~50 min each
+   (self-restarting `workflow_run` chain + 15-min cron watchdog), each with its
+   own runner IP.
+2. Each shard checks **batches of 10 names per POST** against two official
+   bulk endpoints (`api.mojang.com` and `api.minecraftservices.com`), politely:
+   ~1 POST/s per IP → **~200 names/s fleet-wide**.
+3. Three lanes per loop iteration:
+   - **Drop strikes** — names we watched get abandoned are locked for exactly
+     **37 days** (Mojang rule). They are fast-polled starting 90 s before their
+     unlock second and appear on the panel the moment they turn claimable.
+   - **Hot lane** — best ~160 names (ranked word frequency / brands) re-checked
+     every **~10 s**.
+   - **Full sweep** — all ~4,100 watched names at least every ~45–60 s.
+4. Any throttle signal (429, or 8 junk responses in a row) trips a **circuit
+   breaker** that pauses that shard with escalating cooldowns (5 min → 6 h max).
+5. Findings are encrypted (**AES-256-CBC**, PBKDF2-SHA256 120k iterations),
+   uploaded as private artifacts, merged and deployed to GitHub Pages with the
+   single-file dashboard every cycle (~hourly).
+6. The panel shows **only names verified claimable right now** — nothing else.
+
+### Why some free-looking names don't show immediately
+
+An ownerless name is either *claimable now* or *in its 37-day lock*. The API
+cannot tell those apart directly, so first-sighting an ownerless name parks it
+as "locked" until one of two things proves it safe to show:
+
+- it was watched flipping from taken → gone (exact drop time known), or
+- a `?at=` history probe shows no owner existed 45 days ago either.
+
+Worst case for a genuinely-free name: it appears after one probe cycle
+(~15 min). A mid-cooldown name never leaks onto the panel early.
 
 ### Speed expectations
 
 | Event | Delay |
 |---|---|
-| Word frees → scanner notices | avg **~5 min**, worst ~10–15 min |
-| Detected → phone push | seconds |
-| Detected → visible on panel | next publish (~every 10–15 min) |
-
-Panel cards show `✓ confirmed Xm ago` = last time a scan verified the handle is still free.
-This resets every cycle. The LOGS tab records every find, throttle warning, breaker pause,
-and run summary.
+| Hot-lane name frees | ≤ ~10–15 s |
+| Any other name frees | ≤ ~60 s (sweep period) |
+| Watched drop unlocks | strike window starts T-90 s |
+| Visible on panel | next publish (~hourly) |
 
 ---
 
 ## Reality checks worth remembering
 
-- **Telegram forbids usernames shorter than 5 characters.** 3–4 letter handles can only be
-  bought via fragment.com auctions — that's why this project watches 5-letter words, which
-  are directly claimable in-app for free the moment they free up.
-- The panel passphrase is only 4 digits, so it can be brute-forced offline by a determined
-  attacker. Treat panel contents as behind a locked door, not a vault.
-- One shard occasionally dies to a transient GitHub runner error ("Set up job"). It
-  self-heals next cycle — that's what the logs tab is for.
-- Most of the watchlist is free most of the time (thousands of entries). The valuable signal
-  is **change over time** — newest finds sort first.
-
----
+- **Minecraft usernames are 3–16 chars** ([a-z0-9_]); we watch exactly-4-letter
+  alphabetic names only. Even random doubles like `zzqq` are usually taken —
+  the space is heavily squatted, which is precisely why watching pays.
+- When someone changes off a name, the old name is locked **37 days**
+  (30-day rename cooldown + 7-day grace) before anyone can claim it.
+- The panel passphrase is only 4 digits — brute-forceable offline. Treat panel
+  contents as behind a locked door, not a vault.
+- api.mojang.com occasionally throws **sporadic 403s** (known Mojang quirk);
+  the checker tolerates them and only breaker-trips on sustained junk or 429s.
+- One shard occasionally dies to a transient GitHub runner error ("Set up job").
+  It self-heals next cycle — that's what the LOGS tab is for.
+- Detecting is free; **claiming needs your own paid Minecraft account**, done
+  manually at minecraft.net → profile. Automated claiming violates Mojang rules.
 
 ## What was built (history)
 
-1. Multi-platform checker (Telegram / Instagram / Discord) — Discord dropped by decision;
-   Instagram dropped because datacenter IPs got flagged and using your real login cookie
-   from cloud IPs risks account checkpoints.
-2. Wordlists rebuilt twice: 3-letter combos + readable 4-letter words → replaced with
-   4,241 quality 5-letter handles (common-English frequency lists + first-names database +
-   curated Web3/brand/slang sets). Builder: `sniper/build_wordlists.py`.
-3. Persistence went through a git-committed SQLite DB (raced when 20 shards finished at
-   once) → redesigned to race-free artifact storage; nothing sensitive ever lands in git.
-4. Panel deployed via official GitHub Pages actions; cron tightened 20 min → 5 min to kill
-   dead zones between scans.
-5. Panel performance rebuilt: no more accumulating script tags, GPU-heavy blur removed,
-   rendering capped (newest 400 cards), decryption parallelized.
+1. Telegram 5-letter radar (t.me heuristics, ntfy pushes) — fully replaced.
+2. Minecraft conversion: batch×10 lookups against two official bulk hosts;
+   37-day lifecycle tracking (flip timestamps, drop strikes, reclaim detection);
+   history probes to disambiguate cooldown vs claimable; notifications removed.
+3. Wordlists rebuilt: 2,181 dictionary words + 588 four-letter first names +
+   curated brands/terms + up to 1,500 scored adjacent-double-letter patterns
+   (`xxli` yes, `xlxi` never). Builder: `sniper/build_wordlists.py`.
+4. Persistence stays race-free artifact storage; nothing sensitive hits git.
+5. Workflow switched from 5-min cron bursts to chained ~50-min loops
+   (public repo = unlimited Actions minutes).
 
 ## File map
 
 ```
 main.py                     CLI: init / run / stats / free / add / remove / test / pace / export
 sniper/
-  settings.py               pacing, jitter, breaker config (all safety knobs)
-  engine.py                 scheduler, circuit breaker, alerting
-  store.py                  SQLite state (per-shard DBs)
-  platforms/telegram.py     t.me checker (title-page heuristic)
-  notifier.py               ntfy push + optional Telegram bot DMs
-  exporter.py               builds + encrypts dashboard fragments
+  settings.py               batch size/delay, lane intervals, breaker config
+  engine.py                 batch scheduler, hot lane, drop strikes, circuit breaker
+  store.py                  SQLite state (per-shard DBs, flip_ts lifecycle)
+  platforms/minecraft.py    bulk POST checker (two hosts) + ?at= history probe
+  exporter.py               builds + encrypts dashboard fragments (claimable-only)
   aeslite.py                pure-python AES-256 (verified vs FIPS-197 vector)
-  wordlists.py              validity rules + list loading
-  build_wordlists.py        rebuilds sniper/data/five.txt
+  wordlists.py              validity rules + list loading (+ shard hot slice)
+  build_wordlists.py        rebuilds sniper/data/four.txt + hot.txt
 docs/index.html             the entire dashboard (single file)
-tests/                      offline checker tests + AES vector test
+tests/                      offline checker/store/exporter tests + AES vector test
 .github/workflows/watch.yml the whole cloud operation
 ```
 
@@ -107,20 +125,24 @@ tests/                      offline checker tests + AES vector test
 ```powershell
 py -m venv .venv
 .venv\Scripts\python.exe -m pip install aiohttp
-.venv\Scripts\python.exe main.py init          # rebuild local DB from five.txt
+.venv\Scripts\python.exe -m sniper.build_wordlists   # rebuild four.txt/hot.txt
+.venv\Scripts\python.exe main.py init          # rebuild local DB from four.txt
 .venv\Scripts\python.exe main.py test zelda    # live-check one name
 .venv\Scripts\python.exe main.py stats
 .venv\Scripts\python.exe main.py pace          # show current safety config
+.venv\Scripts\python.exe tests\offline_test.py # offline test suite
 ```
 
 ## Maintenance cheat-sheet
 
-- **Is it alive?** Repo → Actions tab → latest `watch` run green? Or open the panel and
-  check the "last scan" pill (should read minutes, not hours).
+- **Is it alive?** Repo → Actions tab → latest `watch` run green? Or open the
+  panel and check the "last scan" pill (should read minutes, not hours).
 - **Add names to watch:** Settings → Secrets → Actions → update `EXTRA_NAMES`
-  (e.g. `myname, othername`).
-- **Change panel password:** update `DASH_PASSPHRASE` secret. Next run re-encrypts all
-  fragments under the new key; unlock the panel with the new passphrase after that run.
-- **Stop everything:** Settings → Actions → Disable workflows (or disable schedule).
-- **Pushes stopped?** Check ntfy app still subscribed to the topic; check Actions runs are
-  succeeding; LOGS tab will show breaker pauses if Telegram throttled us.
+  (e.g. `myname, othername`). Unknown ones get history-probed before showing.
+- **Change panel password:** update `DASH_PASSPHRASE`. Next cycle re-encrypts
+  all fragments under the new key.
+- **Stop everything:** Settings → Actions → Disable workflows (or disable the
+  schedule AND delete the workflow file — the chain restarts itself otherwise).
+- **Panel empty but runs green?** Early after (re)init most names sit in
+  taken/locked while the first sweeps classify them; claimable finds accumulate
+  over the following cycles.

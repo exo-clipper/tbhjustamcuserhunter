@@ -1,20 +1,25 @@
-TELEGRAM_DELAY = 0.75
+# --- batch checking ---------------------------------------------------------
+BATCH_SIZE = 10        # names per POST (mojang bulk limit)
+BATCH_DELAY = 1.05     # seconds between POSTs per shard (~0.95 req/s per IP)
+JITTER = 0.25          # +/- fraction applied to BATCH_DELAY
 
-JITTER = 0.35
+# --- re-check intervals (seconds) -------------------------------------------
+SWEEP_INTERVAL = 30.0  # min gap between checks of the same name
+HOT_RECHECK = 10.0     # fast-lane: hot names at least this often
+FREE_RECHECK = 900.0   # confirm still-free every 15 min
+PROBE_EVERY = 900.0    # re-probe unknown-history names every 15 min
 
-BASE_INTERVALS = {
-    "telegram": 7200.0,
-}
+# --- mojang name lifecycle ---------------------------------------------------
+COOLDOWN = 37 * 86400.0  # dropped names are locked for exactly 37 days
+STRIKE_LEAD = 90.0       # fast-poll a pending drop this many seconds early
 
-FREE_RECHECK = {
-    "telegram": 1800.0,
-}
+# --- circuit breaker ----------------------------------------------------------
+BREAKER_THRESHOLD = 3    # throttle signals before pausing the shard
+BREAKER_START = 300.0    # first pause: 5 min, doubles per trip...
+BREAKER_MAX = 21600.0    # ...capped at 6 h
+UNKNOWN_STRIKE_LIMIT = 8 # consecutive junk responses -> treat as throttling
 
-BREAKER_THRESHOLD = 3
-BREAKER_START = {
-    "telegram": 300.0,
-}
-BREAKER_MAX = 21600.0
+HOT_MAX = 160            # size of the fast lane
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "

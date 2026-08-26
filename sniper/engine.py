@@ -4,7 +4,6 @@ import time
 from pathlib import Path
 
 from . import settings
-from .notifier import fire_and_forget
 from .platforms.base import AVAILABLE, TAKEN, UNKNOWN, CheckerDisabled, RateLimited
 
 GREEN = "\033[92m"
@@ -17,8 +16,8 @@ DATA_DIR = Path(__file__).parent / "data"
 ALERT_LOG = DATA_DIR / "alerts.log"
 
 
-def alert(platform: str, name: str, length: int) -> None:
-    line = f"*** {platform.upper()} @{name} IS FREE -> https://t.me/{name}"
+def alert(platform: str, name: str) -> None:
+    line = f"*** {platform.upper()} {name} IS CLAIMABLE -> minecraft.net profile"
     print(f"\n{GREEN}{line}{RESET}\a", flush=True)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -26,21 +25,20 @@ def alert(platform: str, name: str, length: int) -> None:
         f.write(f"{stamp} {line}\n")
     with open(DATA_DIR / f"free_{platform}.txt", "a", encoding="utf-8") as f:
         f.write(f"{name}\n")
-    fire_and_forget(platform, name, length)
 
 
 class PlatformRunner:
-    def __init__(self, store, checker, delay=None, min_interval=None, quiet=False):
+    """Batch-paced watcher: drop strikes > history probes > hot lane >
+    full sweep > free re-checks."""
+
+    def __init__(self, store, checker, delay=None, quiet=False):
         self.store = store
         self.checker = checker
         platform = checker.NAME
+        self.platform = platform
         self.delay = delay if delay is not None else checker.DEFAULT_DELAY
-        self.min_interval = (
-            min_interval if min_interval is not None else settings.BASE_INTERVALS[platform]
-        )
-        self.free_interval = settings.FREE_RECHECK[platform]
-        self.breaker_start = settings.BREAKER_START[platform]
         self.quiet = quiet
+        self.hot: list[str] = []
         self.checked = 0
         self.found_free = 0
         self._last_dispatch = 0.0
@@ -50,6 +48,9 @@ class PlatformRunner:
         self._level = 0
         self._cooldown_until = 0.0
 
+    def set_hot(self, names: list[str]) -> None:
+        self.hot = list(names)
+
     def _pace(self) -> float:
         now = time.monotonic()
         step = max(0.5, self.delay * (1.0 + random.uniform(-settings.JITTER, settings.JITTER)))
@@ -58,70 +59,103 @@ class PlatformRunner:
         return max(wait, 0.0)
 
     def _trip_breaker(self, reason: str) -> None:
-        cooldown = min(settings.BREAKER_MAX, self.breaker_start * (2**self._level))
+        cooldown = min(settings.BREAKER_MAX, settings.BREAKER_START * (2**self._level))
         self._level += 1
         self._strikes = 0
         self._cooldown_until = time.monotonic() + cooldown
         mins = int(cooldown // 60)
         self.store.log_event(
-            self.checker.NAME, "", f"breaker: paused {mins}m ({reason})"
+            self.platform, "", f"breaker: paused {mins}m ({reason})"
         )
         print(
-            f"{RED}[{self.checker.NAME}] possible rate limiting ({reason}) "
-            f"-> pausing this platform for {mins} min{RESET}",
+            f"{RED}[{self.platform}] possible rate limiting ({reason}) "
+            f"-> pausing this shard for {mins} min{RESET}",
             flush=True,
         )
 
-    async def _check_one(self, name: str) -> None:
-        try:
-            verdict, note = await self.checker.check(name)
-        except RateLimited as e:
-            self._strikes += 1
-            self.store.log_event(self.checker.NAME, "", f"throttle: {e}")
-            print(f"{YELLOW}[{self.checker.NAME}] {e}{RESET}", flush=True)
-            if self._strikes >= settings.BREAKER_THRESHOLD:
-                self._trip_breaker(str(e)[:60])
-            return
-        except CheckerDisabled as e:
-            print(f"{RED}[{self.checker.NAME}] disabled: {e}{RESET}", flush=True)
-            self._stopped.set()
-            return
-        if verdict in (AVAILABLE, TAKEN):
-            self._strikes = 0
-            self._level = 0
-        transition, first_free = self.store.record(
-            self.checker.NAME,
-            name,
-            verdict == AVAILABLE if verdict in (AVAILABLE, TAKEN) else None,
+    def _compose(self) -> tuple[list[str], list[str]]:
+        cap = settings.BATCH_SIZE
+        batch: list[str] = []
+        strikes = self.store.claim_strikes(
+            self.platform, settings.COOLDOWN, settings.STRIKE_LEAD, cap
         )
-        self.checked += 1
-        if transition or first_free:
-            self.found_free += 1
-            self.store.log_event(
-                self.checker.NAME, name, f"became available ({len(name)} letters)"
+        batch.extend(strikes)
+        probes = self.store.claim_probes(self.platform, settings.PROBE_EVERY, 2)
+        if len(batch) < cap - 3:
+            hot = self.store.claim_hot(
+                self.platform, self.hot, settings.HOT_RECHECK, min(5, cap - len(batch))
             )
-            alert(self.checker.NAME, name, len(name))
-        elif not self.quiet and verdict == UNKNOWN:
-            print(f"{DIM}[{self.checker.NAME}] {name}: unknown ({note}){RESET}", flush=True)
+            seen = set(batch)
+            batch.extend(n for n in hot if n not in seen)
+        if len(batch) < cap:
+            regular = self.store.claim(
+                self.platform, settings.SWEEP_INTERVAL, cap - len(batch)
+            )
+            seen = set(batch)
+            batch.extend(n for n in regular if n not in seen)
+        if len(batch) < cap:
+            frees = self.store.claim_free(
+                self.platform, settings.FREE_RECHECK, cap - len(batch)
+            )
+            seen = set(batch)
+            batch.extend(n for n in frees if n not in seen)
+        return batch[:cap], probes
+
+    async def _handle_batch(self, names: list[str]) -> None:
+        results = await self.checker.check_batch(names)
+        for name in names:
+            verdict, note = results.get(name, (UNKNOWN, "no result"))
+            if verdict == UNKNOWN:
+                if not self.quiet:
+                    print(f"{DIM}[{self.platform}] {name}: unknown ({note}){RESET}", flush=True)
+                continue
+            self.checked += 1
+            ev = self.store.record_result(self.platform, name, verdict == TAKEN)
+            if not ev:
+                continue
+            self.store.log_event(self.platform, name, ev)
+            if ev.startswith("claimable"):
+                self.found_free += 1
+                alert(self.platform, name)
+            elif ev.startswith("dropped"):
+                print(f"{GREEN}[{self.platform}] {name}: {ev}{RESET}", flush=True)
+            else:
+                print(f"{YELLOW}[{self.platform}] {name}: {ev}{RESET}", flush=True)
+
+    async def _run_probes(self, names: list[str]) -> None:
+        for name in names:
+            await asyncio.sleep(self._pace())
+            had_owner = await self.checker.probe_history(name)
+            if had_owner is True and not self.quiet:
+                print(f"{DIM}[{self.platform}] {name}: owned recently, staying hidden{RESET}", flush=True)
+            ev = self.store.record_probe(self.platform, name, had_owner)
+            if ev:
+                self.store.log_event(self.platform, name, ev)
+                self.found_free += 1
+                alert(self.platform, name)
 
     async def _worker(self) -> None:
         while not self._stopped.is_set():
             if time.monotonic() < self._cooldown_until:
                 await asyncio.sleep(min(10.0, self._cooldown_until - time.monotonic()))
                 continue
-            batch = self.store.claim_free(self.checker.NAME, self.free_interval, limit=1)
-            if not batch:
-                batch = self.store.claim(self.checker.NAME, self.min_interval, limit=1)
-            if not batch:
-                await asyncio.sleep(5)
+            batch, probes = self._compose()
+            if not batch and not probes:
+                await asyncio.sleep(2)
                 continue
-            await asyncio.sleep(self._pace())
-            if self._stopped.is_set():
-                break
-            await self._check_one(batch[0])
-
-    def pending(self) -> int:
-        return len(self.store.claim(self.checker.NAME, self.min_interval, limit=10**6))
+            try:
+                if batch:
+                    await asyncio.sleep(self._pace())
+                    if self._stopped.is_set():
+                        break
+                    await self._handle_batch(batch)
+                await self._run_probes(probes)
+            except RateLimited as e:
+                self._strikes += 1
+                self.store.log_event(self.platform, "", f"throttle: {e}")
+                print(f"{YELLOW}[{self.platform}] {e}{RESET}", flush=True)
+                if self._strikes >= settings.BREAKER_THRESHOLD:
+                    self._trip_breaker(str(e)[:60])
 
     async def run(
         self,
@@ -130,7 +164,8 @@ class PlatformRunner:
         minutes: float | None = None,
     ) -> None:
         workers = [
-            asyncio.create_task(self._worker()) for _ in range(self.checker.CONCURRENCY)
+            asyncio.create_task(self._worker())
+            for _ in range(max(1, self.checker.CONCURRENCY))
         ]
         started = time.monotonic()
         try:
@@ -148,9 +183,9 @@ class PlatformRunner:
         finally:
             try:
                 self.store.log_event(
-                    self.checker.NAME,
+                    self.platform,
                     "",
-                    f"run: checked {self.checked}, free {self.found_free}",
+                    f"run: checked {self.checked}, claimable {self.found_free}",
                 )
             except Exception:
                 pass
@@ -158,3 +193,6 @@ class PlatformRunner:
             for w in workers:
                 w.cancel()
             await asyncio.gather(*workers, return_exceptions=True)
+
+    def pending(self) -> int:
+        return len(self.store.claim(self.platform, settings.SWEEP_INTERVAL, limit=10**6))

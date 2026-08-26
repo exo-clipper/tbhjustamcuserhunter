@@ -1,16 +1,16 @@
 import re
+import zlib
 from pathlib import Path
 
 DATA = Path(__file__).parent / "data"
 
-PLATFORMS = ("telegram",)
+PLATFORMS = ("minecraft",)
 
-_FILES = ("five.txt", "extras.txt")
+_FILES = ("four.txt", "extras.txt")
 
 _RULES = {
-    # >=3 chars; note: on telegram anything under 5 chars is auctioned via
-    # fragment rather than freely claimable, but we still watch for changes
-    "telegram": re.compile(r"^[a-z][a-z0-9_]{2,31}$"),
+    # what minecraft itself accepts (we only watch 4-letter alpha names)
+    "minecraft": re.compile(r"^[a-z0-9_]{3,16}$"),
 }
 
 
@@ -28,3 +28,18 @@ def load_names(platform: str) -> list[str]:
                 if n and valid_for(platform, n):
                     names.add(n)
     return sorted(names)
+
+
+def load_hot(idx: int, cnt: int) -> list[str]:
+    """This shard's slice of the fast lane (consistent crc sharding)."""
+    p = DATA / "hot.txt"
+    if not p.exists():
+        return []
+    out = []
+    for line in p.read_text(encoding="utf-8").splitlines():
+        n = line.strip().lower()
+        if not n:
+            continue
+        if cnt <= 1 or zlib.crc32(n.encode()) % cnt == idx:
+            out.append(n)
+    return out
