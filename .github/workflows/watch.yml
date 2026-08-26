@@ -1,22 +1,23 @@
 name: watch
 on:
   schedule:
-    - cron: "*/20 * * * *"   # watchdog: restarts cycles, self-heals dead shards
+    - cron: "9,29,49 * * * *"   # watchdog: seeds/heals; waves self-sustain
   workflow_dispatch:
     inputs:
       loop_minutes:
         description: "minutes each shard keeps watching"
-        default: "60"
+        default: "165"
 permissions:
-  contents: read
+  contents: write
 jobs:
   minecraft:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 200
     strategy:
       fail-fast: false
       max-parallel: 20
       matrix:
+        wave: [a, b]
         shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
     concurrency:
       group: watcher-${{ matrix.shard }}
@@ -28,7 +29,7 @@ jobs:
       EXTRA_NAMES: ${{ secrets.EXTRA_NAMES }}
       DASH_PASSPHRASE: ${{ secrets.DASH_PASSPHRASE }}
       GH_TOKEN: ${{ github.token }}
-      LOOP_MINUTES: ${{ github.event.inputs.loop_minutes || '60' }}
+      LOOP_MINUTES: ${{ github.event.inputs.loop_minutes || '165' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -41,7 +42,7 @@ jobs:
         id: prev
         continue-on-error: true
         run: |
-          RID=$(gh api "repos/${{ github.repository }}/actions/workflows/watch.yml/runs?per_page=20" \
+          RID=$(gh api "repos/${{ github.repository }}/actions/workflows/watch.yml/runs?per_page=30" \
             --jq '[.workflow_runs[] | select(.conclusion=="success")][0].id // ""')
           echo "run_id=$RID" >> "$GITHUB_OUTPUT"
       - name: restore state

@@ -1,7 +1,10 @@
 import argparse
 import asyncio
 import os
+import random
+import subprocess
 import sys
+import tempfile
 import time
 import zlib
 
@@ -71,6 +74,76 @@ def cmd_init(args) -> None:
     print(f"shard {idx}/{cnt}, db {os.path.basename(DB_PATH)}")
 
 
+def _git(args: list[str]) -> subprocess.CompletedProcess:
+    return subprocess.run(["git"] + args, capture_output=True, text=True)
+
+
+def git_publish_fragment(src_path: str, idx: int) -> bool:
+    """Force-push this shard's fragment onto the gh-pages branch so the
+    panel updates within a Pages build (~1 min) instead of at cycle end."""
+    slug = os.environ.get("GITHUB_REPOSITORY", "")
+    token = os.environ.get("GH_TOKEN", "")
+    if not slug or not token:
+        return False
+    url = f"https://x-access-token:{token}@github.com/{slug}.git"
+    name = f"shard_{idx}.data.js"
+    for attempt in range(3):
+        _git(["fetch", "origin", "gh-pages"])
+        sw = _git(["switch", "-C", "gh-pages", "origin/gh-pages"])
+        if sw.returncode != 0:
+            _git(["switch", "--orphan", "gh-pages"])
+        try:
+            os.replace(src_path, name)
+            _git(["add", name])
+            commit = _git(["commit", "-m", f"data: shard {idx} live update"])
+            if commit.returncode == 0:
+                push = _git(["push", url, "gh-pages"])
+                if push.returncode == 0:
+                    return True
+        except OSError:
+            pass
+        time.sleep(2.0 + random.random() * 3.0)
+    return False
+
+
+async def flusher_task(runner: PlatformRunner, store: Store, idx: int) -> None:
+    """Push fresh fragments to gh-pages: once early (bootstrap snapshot),
+    then whenever new finds appear, with a slow heartbeat in between."""
+    passphrase = os.environ.get("DASH_PASSPHRASE", "").strip()
+    if not passphrase:
+        return
+    offset = idx * settings.STAGGER_PER_SHARD
+    last_pushed_count = -1
+    last_push_time = 0.0
+    tmp_dir = os.path.join(ROOT, "frag_live")
+    os.makedirs(tmp_dir, exist_ok=True)
+    tmp_out = os.path.join(tmp_dir, f"shard_{idx}.data.js")
+    await asyncio.sleep(settings.FLUSH_FIRST_DELAY + random.uniform(0, offset))
+    while not runner.stopping():
+        try:
+            n = runner.found_free
+            now_mono = time.monotonic() + offset
+            due_new = n > last_pushed_count and now_mono - last_push_time >= settings.FLUSH_MIN_GAP
+            due_beat = now_mono - last_push_time >= settings.FLUSH_HEARTBEAT
+            if not (due_new or due_beat):
+                await asyncio.sleep(15)
+                continue
+            mode = exporter.write_fragment(store, idx, tmp_out, passphrase)
+            ok = await asyncio.get_running_loop().run_in_executor(
+                None, git_publish_fragment, tmp_out, idx
+            )
+            if ok:
+                last_pushed_count = n
+                last_push_time = time.monotonic() + offset
+                print(f"[flush] shard {idx}: pushed {mode} fragment ({n} finds)", flush=True)
+            else:
+                print(f"[flush] shard {idx}: push failed, will retry", flush=True)
+                await asyncio.sleep(20)
+        except Exception as e:
+            print(f"[flush] shard {idx}: {e}", flush=True)
+            await asyncio.sleep(30)
+
+
 def cmd_run(args) -> None:
     store = Store(DB_PATH)
     idx, cnt = _shard()
@@ -89,11 +162,13 @@ def cmd_run(args) -> None:
             quiet=args.quiet,
         )
         runner.set_hot(load_hot(idx, cnt))
-        task = asyncio.create_task(
+        tasks = [asyncio.create_task(
             runner.run(once=args.once, limit=args.limit, minutes=args.minutes)
-        )
+        )]
+        if not args.no_flush:
+            tasks.append(asyncio.create_task(flusher_task(runner, store, idx)))
         try:
-            await asyncio.gather(task)
+            await asyncio.gather(*tasks)
         finally:
             await session.close()
             store.conn.close()
@@ -237,6 +312,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--minutes", type=float, default=None,
                    help="stop after this many minutes (for CI runs)")
     p.add_argument("--quiet", action="store_true", help="only print finds")
+    p.add_argument("--no-flush", action="store_true",
+                   help="disable live fragment pushes (for local testing)")
     p.add_argument("--delay", type=float, default=settings.BATCH_DELAY,
                    help="seconds between batch POSTs (default %(default)s)")
     p.set_defaults(fn=cmd_run)

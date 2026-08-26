@@ -21,6 +21,12 @@ UNKNOWN_STRIKE_LIMIT = 8 # consecutive junk responses -> treat as throttling
 
 HOT_MAX = 160            # size of the fast lane
 
+# --- live panel publishing ----------------------------------------------------
+FLUSH_FIRST_DELAY = 150.0   # seconds after boot: first guaranteed snapshot push
+FLUSH_MIN_GAP = 75.0        # min seconds between pushes of this shard
+FLUSH_HEARTBEAT = 900.0     # push even without new finds every 15 min
+STAGGER_PER_SHARD = 25.0    # offset each shard so fleet pushes spread out
+
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"

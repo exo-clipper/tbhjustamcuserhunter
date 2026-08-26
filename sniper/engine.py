@@ -51,6 +51,9 @@ class PlatformRunner:
     def set_hot(self, names: list[str]) -> None:
         self.hot = list(names)
 
+    def stopping(self) -> bool:
+        return self._stopped.is_set()
+
     def _pace(self) -> float:
         now = time.monotonic()
         step = max(0.5, self.delay * (1.0 + random.uniform(-settings.JITTER, settings.JITTER)))

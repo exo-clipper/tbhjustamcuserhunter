@@ -27,11 +27,15 @@ URLS = {
 }
 
 BLOCKLIST = {
-    "anal", "anus", "arse", "bitch", "boner", "clit", "cock", "cum",
-    "cunt", "dago", "dick", "dild", "dyke", "fag", "fags", "fapp",
-    "fuck", "gook", "homo", "japs", "jizz", "kike", "kys", "nigg",
-    "orgy", "penis", "porn", "prick", "pube", "puss", "queef", "rape",
-    "semen", "shit", "skank", "slut", "spic", "twat", "wank", "whor",
+    # minecraft's profanity filter rejects these, so they can never be
+    # claimed - showing them would waste your time
+    "anal", "anus", "arse", "bdsm", "bitch", "boob", "boobs", "boner",
+    "clit", "cock", "cum", "cunt", "dago", "damn", "dick", "dild",
+    "dyke", "fag", "fags", "fapp", "fuck", "gook", "homo", "horn",
+    "horny", "hump", "japs", "jerk", "jizz", "kike", "kys", "nigg",
+    "nude", "orgy", "penis", "porn", "prick", "pube", "puss", "queef",
+    "rape", "semen", "sexy", "shag", "shags", "shit", "skank", "slut",
+    "spic", "tit", "tits", "twat", "wank", "whor",
 }
 
 BRANDS = {

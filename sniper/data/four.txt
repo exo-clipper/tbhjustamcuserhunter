@@ -368,7 +368,6 @@ bbte
 bbti
 bbto
 bbve
-bdsm
 beak
 beam
 bean
@@ -451,7 +450,6 @@ bone
 bong
 bonn
 bony
-boob
 book
 bool
 boom
@@ -730,7 +728,6 @@ dais
 dale
 dall
 dame
-damn
 damp
 dana
 dane
@@ -1742,7 +1739,6 @@ hoou
 hope
 hops
 hora
-horn
 horr
 hose
 hoss
@@ -1773,7 +1769,6 @@ hugs
 hula
 hulk
 hull
-hump
 hums
 hung
 hunh
@@ -2006,7 +2001,6 @@ jene
 jeni
 jere
 jeri
-jerk
 jerr
 jess
 jest
@@ -2700,7 +2694,6 @@ ntta
 ntte
 ntti
 ntto
-nude
 nuke
 null
 numb
@@ -3323,10 +3316,8 @@ sets
 sett
 sewn
 sexo
-sexy
 shad
 shae
-shag
 shah
 sham
 shan
@@ -3649,7 +3640,6 @@ tire
 tisa
 tish
 tiss
-tits
 tlle
 toad
 tobi
