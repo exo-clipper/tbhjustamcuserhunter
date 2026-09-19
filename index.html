@@ -1,0 +1,567 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SNIPER</title>
+<style>
+  :root {
+    --bg: #04060d;
+    --panel: rgba(13, 18, 32, .78);
+    --line: rgba(148, 163, 184, .14);
+    --txt: #e2e8f0;
+    --dim: #64748b;
+    --cyan: #22d3ee;
+    --violet: #a78bfa;
+    --green: #34d399;
+    --amber: #fbbf24;
+    --red: #f87171;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    min-height: 100vh;
+    background:
+      radial-gradient(900px 500px at 85% -10%, rgba(167, 139, 250, .12), transparent 60%),
+      radial-gradient(800px 460px at -10% 15%, rgba(34, 211, 238, .09), transparent 55%),
+      var(--bg);
+    color: var(--txt);
+    font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+  }
+  code, .mono { font-family: ui-monospace, "Cascadia Code", Consolas, Menlo, monospace; }
+
+  #gate {
+    position: fixed; inset: 0; z-index: 50;
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+    background: inherit;
+  }
+  .gatecard {
+    width: 340px; max-width: 100%;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 34px 28px;
+    backdrop-filter: blur(18px);
+    box-shadow: 0 30px 80px rgba(0, 0, 0, .55);
+    animation: rise .5s ease both;
+  }
+  .gatecard.shake { animation: shake .4s ease; }
+  .logo { display: flex; align-items: center; gap: 10px; justify-content: center; margin-bottom: 6px; }
+  .logo .mark {
+    width: 34px; height: 34px; border-radius: 10px;
+    display: grid; place-items: center;
+    background: linear-gradient(135deg, rgba(34,211,238,.25), rgba(167,139,250,.25));
+    border: 1px solid rgba(34, 211, 238, .35);
+    color: var(--cyan); font-size: 17px;
+  }
+  h1 {
+    font-size: 19px; letter-spacing: .42em; font-weight: 700; text-indent: .42em;
+    background: linear-gradient(90deg, var(--cyan), var(--violet));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .sub { text-align: center; color: var(--dim); font-size: 12px; margin-bottom: 22px; letter-spacing: .08em; }
+  input[type=password] {
+    width: 100%; padding: 13px 15px; border-radius: 12px;
+    border: 1px solid var(--line);
+    background: rgba(2, 6, 17, .6); color: var(--txt);
+    outline: none; font-size: 15px; letter-spacing: .06em;
+    transition: border-color .2s, box-shadow .2s;
+  }
+  input[type=password]:focus {
+    border-color: rgba(34, 211, 238, .55);
+    box-shadow: 0 0 0 3px rgba(34, 211, 238, .12);
+  }
+  button.primary {
+    width: 100%; margin-top: 12px; padding: 13px; border: none; border-radius: 12px;
+    font-weight: 700; letter-spacing: .14em; font-size: 13px; color: #031016;
+    cursor: pointer;
+    background: linear-gradient(90deg, var(--cyan), var(--violet));
+    transition: filter .2s, transform .1s;
+  }
+  button.primary:hover { filter: brightness(1.12); }
+  button.primary:active { transform: scale(.98); }
+  #gateErr { color: var(--red); font-size: 12px; text-align: center; margin-top: 12px; min-height: 15px; }
+
+  #app { max-width: 1080px; margin: 0 auto; padding: 26px 18px 60px; }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap; margin-bottom: 20px;
+  }
+  .brand { display: flex; align-items: center; gap: 11px; }
+  #lock {
+    margin-left: auto; padding: 7px 13px; border-radius: 9px; cursor: pointer;
+    font: 600 11px/1 ui-monospace, monospace; letter-spacing: .12em;
+    color: var(--dim); background: rgba(255, 255, 255, .04);
+    border: 1px solid rgba(255, 255, 255, .12);
+  }
+  #lock:hover { color: var(--red); border-color: rgba(248, 113, 113, .45); }
+  .brand .mark {
+    width: 38px; height: 38px; border-radius: 11px;
+    display: grid; place-items: center; font-size: 18px; color: var(--cyan);
+    background: linear-gradient(135deg, rgba(34,211,238,.22), rgba(167,139,250,.22));
+    border: 1px solid rgba(34, 211, 238, .35);
+    box-shadow: 0 0 24px rgba(34, 211, 238, .18);
+  }
+  .brand h1 { font-size: 17px; }
+  .pill {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 14px; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--panel);
+    font-size: 12px; color: var(--dim);
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); flex: none; }
+  .dot.live { background: var(--green); box-shadow: 0 0 0 0 rgba(52, 211, 153, .6); animation: pulse 2s infinite; }
+  .dot.stale { background: var(--amber); }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(52,211,153,.45); }
+    70% { box-shadow: 0 0 0 9px rgba(52,211,153,0); }
+    100% { box-shadow: 0 0 0 0 rgba(52,211,153,0); }
+  }
+
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-bottom: 22px; }
+  .stat {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 16px; padding: 14px 16px;
+  }
+  .stat b { display: block; font-size: 22px; margin-top: 3px; }
+  .stat span { font-size: 11px; color: var(--dim); letter-spacing: .12em; text-transform: uppercase; }
+  .stat.free b { color: var(--green); text-shadow: 0 0 18px rgba(52, 211, 153, .45); }
+
+  nav { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
+  .tab {
+    padding: 10px 18px; border-radius: 12px; cursor: pointer; user-select: none;
+    border: 1px solid var(--line); background: transparent; color: var(--dim);
+    font-size: 13px; font-weight: 600; letter-spacing: .1em;
+    display: flex; gap: 8px; align-items: center;
+    transition: all .18s;
+  }
+  .tab:hover { color: var(--txt); border-color: rgba(148, 163, 184, .3); }
+  .tab.active {
+    color: #06131b;
+    background: linear-gradient(90deg, var(--cyan), var(--violet));
+    border-color: transparent;
+    box-shadow: 0 6px 24px rgba(56, 189, 248, .25);
+  }
+  .tab .cnt {
+    background: rgba(2, 6, 17, .35); border-radius: 999px; padding: 2px 8px; font-size: 11px;
+  }
+  .tab:not(.active) .cnt { background: rgba(148, 163, 184, .12); }
+
+  section[hidden] { display: none; }
+  .grid {
+    display: grid; gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(165px, 1fr));
+  }
+  .card {
+    position: relative;
+    background: rgba(13, 18, 32, .88);
+    border: 1px solid var(--line);
+    border-radius: 16px; padding: 14px 15px;
+    animation: rise .35s ease both;
+    transition: transform .16s, border-color .16s, box-shadow .16s;
+    overflow: hidden;
+    content-visibility: auto;
+    contain-intrinsic-size: 96px;
+  }
+  .card::before {
+    content: ""; position: absolute; inset: 0 0 auto 0; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(167,139,250,.7), transparent);
+    opacity: 0; transition: opacity .16s;
+  }
+  .card:hover {
+    transform: translateY(-3px);
+    border-color: rgba(167, 139, 250, .45);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, .45);
+  }
+  .card:hover::before { opacity: 1; }
+  .card .name { font-size: 19px; font-weight: 700; letter-spacing: .02em; word-break: break-all; color: var(--violet); text-shadow: 0 0 22px rgba(167, 139, 250, .35); }
+  .card .len {
+    position: absolute; top: 12px; right: 13px;
+    font-size: 10px; color: var(--dim); border: 1px solid var(--line);
+    padding: 2px 7px; border-radius: 999px; letter-spacing: .1em;
+  }
+  .card .badge {
+    position: absolute; top: 11px; right: 12px;
+    font-size: 9.5px; font-weight: 800; letter-spacing: .14em;
+    color: #052e21; background: var(--green);
+    padding: 3px 8px; border-radius: 999px;
+  }
+  .card.fresh {
+    border-color: rgba(52, 211, 153, .5);
+    box-shadow: 0 0 0 1px rgba(52, 211, 153, .18), 0 14px 34px rgba(0, 0, 0, .45);
+    animation: rise .35s ease both, glow 1.8s ease-in-out 3;
+  }
+  @keyframes glow {
+    0%, 100% { box-shadow: 0 0 0 1px rgba(52,211,153,.18), 0 14px 34px rgba(0,0,0,.45); }
+    50% { box-shadow: 0 0 0 4px rgba(52,211,153,.22), 0 14px 34px rgba(0,0,0,.45); }
+  }
+  .card .when { color: var(--dim); font-size: 11.5px; margin: 7px 0 11px; }
+  .card .acts { display: flex; gap: 7px; }
+  .card a {
+    flex: 1; text-align: center; text-decoration: none; font-size: 11px; font-weight: 700;
+    letter-spacing: .08em; padding: 7px 0; border-radius: 9px;
+    color: var(--txt); border: 1px solid var(--line);
+    transition: all .15s;
+  }
+  .card a:hover { border-color: rgba(167, 139, 250, .5); color: var(--violet); }
+  .card a.hot {
+    color: #052e21; border-color: transparent;
+    background: linear-gradient(90deg, var(--green), #a7f3d0);
+  }
+  .card a.hot:hover { color: #052e21; filter: brightness(1.1); }
+
+  .logbox {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+    padding: 8px 0;
+  }
+  .lg {
+    display: flex; gap: 12px; padding: 9px 18px; align-items: baseline;
+    border-bottom: 1px dashed rgba(148, 163, 184, .08);
+    font-family: ui-monospace, Consolas, monospace; font-size: 12.5px;
+    animation: rise .3s ease both;
+    content-visibility: auto;
+  }
+  .lg:last-child { border-bottom: none; }
+  .lg .t { color: var(--dim); white-space: nowrap; font-size: 11px; flex: none; }
+  .lg .m { word-break: break-word; }
+  .lg.free .m { color: var(--green); }
+  .lg.warn .m { color: var(--amber); }
+  .lg.err .m { color: var(--red); }
+  .lg.info .m { color: var(--dim); }
+
+  .empty { color: var(--dim); text-align: center; padding: 48px 0; font-size: 13px; letter-spacing: .08em; }
+  footer { margin-top: 26px; color: var(--dim); font-size: 11px; text-align: center; letter-spacing: .08em; }
+
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes shake { 0%,100%{transform:none} 25%{transform:translateX(-7px)} 75%{transform:translateX(7px)} }
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <div class="gatecard" id="gatecard">
+    <div class="logo"><div class="mark">&#9670;</div><h1>SNIPER</h1></div>
+    <p class="sub">PRIVATE MINECRAFT NAME RADAR &middot; 4-LETTER WATCH</p>
+    <input type="password" id="pass" placeholder="passphrase" autocomplete="off">
+    <button class="primary" id="unlock">UNLOCK</button>
+    <div id="gateErr"></div>
+  </div>
+</div>
+
+<div id="app" hidden>
+  <header>
+    <div class="brand"><div class="mark">&#9670;</div><h1>SNIPER</h1></div>
+    <div class="pill"><span class="dot" id="liveDot"></span><span id="liveTxt">connecting&hellip;</span></div>
+    <button id="lock" title="forget the passphrase on this device">LOCK</button>
+  </header>
+
+  <div class="stats">
+    <div class="stat free"><span>free now</span><b id="stFree">&ndash;</b></div>
+    <div class="stat"><span>tracked</span><b id="stTotal">&ndash;</b></div>
+    <div class="stat"><span>shards live</span><b id="stShards">&ndash;</b></div>
+    <div class="stat"><span>last scan</span><b id="stScan">&ndash;</b></div>
+  </div>
+
+  <nav>
+    <div class="tab active" data-t="gfree">FREE <span class="cnt" id="cfree">0</span></div>
+    <div class="tab" data-t="gl">LOGS <span class="cnt" id="cl">0</span></div>
+  </nav>
+
+  <section id="gfree"><div class="grid" id="gridFree"></div></section>
+  <section id="gl" hidden><div class="logbox" id="logs"></div></section>
+
+  <footer><span id="footTxt">connecting to live feed&hellip;</span></footer>
+</div>
+
+<script>
+"use strict";
+const SHARDS = 18, PBKF_ITER = 1200000, CARD_CAP = 400, LOG_CAP = 250;
+const LEGACY_ITER = 120000;  // shim: blobs from a shard still on older code
+const POLL_MS = 12000;       // the feed is a branch, not a Pages build
+const NEW_FOR = 180;         // seconds a find keeps its NEW badge
+const STALE_AFTER = 420;     // no scan in this long = amber dot
+const $ = id => document.getElementById(id);
+const enc = new TextEncoder();
+const esc = s => String(s).replace(/[&<>"']/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+// panel is served from OWNER.github.io/REPO/, and the shards push their
+// encrypted blobs to branch feed-N of that same repo. ?repo=owner/name points
+// it at a different repo's branches.
+const qs = new URLSearchParams(location.search);
+const [qsOwner, qsRepo] = (qs.get("repo") || "").split("/");
+const OWNER = qsOwner || location.hostname.split(".")[0];
+const REPO = qsRepo || location.pathname.split("/").filter(Boolean)[0] ||
+             (OWNER + ".github.io");
+// ?feed=<base> reads feed-N/frag.txt from somewhere else entirely, for testing
+// the render path without github. Local pages only - the published panel must
+// not be redirectable to another origin by query string.
+const LOCAL = location.protocol === "file:" ||
+              /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+const FEED_BASE = (LOCAL && qs.get("feed")) || "";
+const feedURL = i => FEED_BASE
+  ? `${FEED_BASE}feed-${i}/frag.txt?t=${Date.now()}`
+  : `https://raw.githubusercontent.com/${OWNER}/${REPO}/feed-${i}/frag.txt?t=${Date.now()}`;
+
+let RAW = {};                // shard -> decrypted payload
+let BLOBS = {};              // shard -> ciphertext we last decrypted
+let KEY = null;
+let lastFetch = 0;
+let seenNames = new Set();
+let firstPaint = true;
+
+function b64ToBytes(b) {
+  const s = atob(b.replace(/-/g, "+").replace(/_/g, "/"));
+  const out = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+  return out;
+}
+
+// The feed blobs are public ciphertext, so the passphrase is the only thing
+// guarding them - hence the deliberately expensive KDF. Must stay identical to
+// sniper/settings.py KDF_ITERATIONS, or nothing decrypts.
+const KEYS = new Map();   // pass|salt -> Promise<CryptoKey>
+
+async function deriveKey(pass, salt, iters) {
+  // the salt is fixed server-side, so this runs ~once per session instead of
+  // once per shard per poll; cache the PROMISE so the 18 shards that unlock
+  // together share one derivation rather than each paying for their own
+  const id = iters + "|" + pass + "|" +
+    Array.from(salt, b => b.toString(16).padStart(2, "0")).join("");
+  let job = KEYS.get(id);
+  if (!job) {
+    job = crypto.subtle
+      .importKey("raw", enc.encode(pass), "PBKDF2", false, ["deriveKey"])
+      .then(km => crypto.subtle.deriveKey(
+        { name: "PBKDF2", salt, iterations: iters, hash: "SHA-256" },
+        km, { name: "AES-CBC", length: 256 }, false, ["decrypt"]
+      ));
+    KEYS.set(id, job);
+  }
+  return job;
+}
+
+async function decryptBlob(b64, pass) {
+  const raw = b64ToBytes(b64);
+  const salt = raw.slice(0, 16), iv = raw.slice(16, 32), ct = raw.slice(32);
+  // LEGACY_ITER is a transition shim: a shard still running older code writes
+  // blobs at the old work factor, and refusing them would blank the panel for
+  // no security gain (a weak blob is weak whether or not we read it). Safe to
+  // delete once every feed-* branch has been rewritten by current code.
+  for (const iters of [PBKF_ITER, LEGACY_ITER]) {
+    try {
+      const key = await deriveKey(pass, salt, iters);
+      const pt = await crypto.subtle.decrypt({ name: "AES-CBC", iv }, key, ct);
+      return JSON.parse(new TextDecoder().decode(pt));
+    } catch (e) {
+      if (iters === LEGACY_ITER) throw e;
+    }
+  }
+}
+
+// pull every shard's branch straight off raw.githubusercontent; a missing
+// branch (shard never booted yet) is normal, not an error
+async function fetchFeed() {
+  const jobs = [];
+  for (let i = 0; i < SHARDS; i++) {
+    jobs.push(fetch(feedURL(i), { cache: "no-store" })
+      .then(r => r.ok ? r.text() : null)
+      .then(t => {
+        const blob = (t || "").trim();
+        if (/^[A-Za-z0-9+/=]{64,}$/.test(blob)) BLOBS[i] = blob;
+      })
+      .catch(() => {}));
+  }
+  await Promise.all(jobs);
+  lastFetch = Date.now();
+  return Object.keys(BLOBS).length;
+}
+
+// with a fixed salt the key is derived once, so a 12s poll costs nothing;
+// shards whose ciphertext is unchanged are skipped entirely
+async function decryptAll() {
+  await Promise.all(Object.entries(BLOBS).map(async ([k, b]) => {
+    if (RAW[k] && RAW[k].__blob === b) return;
+    try {
+      const p = await decryptBlob(b, KEY);
+      p.__blob = b;
+      RAW[k] = p;
+    } catch { delete RAW[k]; }
+  }));
+}
+
+function merge() {
+  const frees = new Map();
+  let events = [];
+  let counts = { total: 0 };
+  let lastChecked = 0;
+  let shardsLive = 0;
+  for (const p of Object.values(RAW)) {
+    if (!p || typeof p !== "object") continue;
+    shardsLive++;
+    lastChecked = Math.max(lastChecked, p.last_checked || 0, p.generated || 0);
+    for (const f of p.free || []) {
+      const cur = frees.get(f.n);
+      if (!cur || f.t > cur.t) frees.set(f.n, f);
+    }
+    events = events.concat(p.events || []);
+    counts.total += (p.counts && p.counts.total) || 0;
+  }
+  return { frees: [...frees.values()].sort((a, b) => b.t - a.t), events, counts, lastChecked, shardsLive };
+}
+
+function rel(ts) {
+  if (!ts) return "?";
+  const d = Date.now() / 1000 - ts;
+  if (d < 90) return Math.max(1, Math.round(d)) + "s ago";
+  if (d < 5400) return Math.round(d / 60) + "m ago";
+  if (d < 172800) return Math.round(d / 3600) + "h ago";
+  return Math.round(d / 86400) + "d ago";
+}
+
+function cardHTML(f) {
+  const confirmed = f.c ? rel(f.c) : rel(f.t);
+  // NEW = it showed up while you were watching, or it was discovered in the
+  // last few minutes (so a fresh page load still flags the recent ones)
+  const fresh = (!firstPaint && !seenNames.has(f.n)) ||
+                (Date.now() / 1000 - f.t) < NEW_FOR;
+  return `<div class="card${fresh ? " fresh" : ""}">
+    ${fresh ? '<span class="badge">NEW</span>' : `<span class="len">${esc(f.l)}-LTR</span>`}
+    <div class="name mono">${esc(f.n)}</div>
+    <div class="when" title="discovered ${rel(f.t)}">&#10003; confirmed free ${confirmed}</div>
+    <div class="acts">
+      <a class="hot" href="https://www.minecraft.net/en-us/profile" target="_blank" rel="noopener">CLAIM &#8599;</a>
+      <a href="https://namemc.com/search?q=${encodeURIComponent(f.n)}" target="_blank" rel="noopener">NAMEMC</a>
+    </div>
+  </div>`;
+}
+
+function logClass(m) {
+  if (m.startsWith("claimable")) return "free";
+  if (m.startsWith("breaker")) return "err";
+  if (m.startsWith("throttle")) return "warn";
+  if (m.startsWith("gone") || m.startsWith("reclaimed")) return "warn";
+  return "info";
+}
+
+function render() {
+  const d = merge();
+
+  $("stFree").textContent = d.frees.length.toLocaleString();
+  $("stTotal").textContent = d.counts.total.toLocaleString();
+  $("stShards").textContent = d.shardsLive || "\u2013";
+  $("stScan").textContent = d.lastChecked ? rel(d.lastChecked) : "\u2013";
+  $("cfree").textContent = d.frees.length;
+  $("cl").textContent = d.events.length;
+
+  $("gridFree").innerHTML = d.frees.slice(0, CARD_CAP).map(cardHTML).join("") ||
+    '<div class="empty" style="grid-column:1/-1">radar sweeping &mdash; nothing claimable right now</div>';
+  if (d.frees.length > CARD_CAP) {
+    $("gridFree").insertAdjacentHTML("beforeend",
+      `<div class="empty" style="grid-column:1/-1">+ ${(d.frees.length - CARD_CAP).toLocaleString()} more &mdash; showing newest ${CARD_CAP}</div>`);
+  }
+  seenNames = new Set(d.frees.map(f => f.n));
+  firstPaint = false;
+
+  const seen = new Set();
+  const logs = [];
+  for (const e of d.events.sort((a, b) => b.ts - a.ts)) {
+    const kk = e.m + "|" + e.n + "|" + e.ts;
+    if (seen.has(kk)) continue;
+    seen.add(kk);
+    logs.push(`<div class="lg ${logClass(e.m)}"><span class="t">${new Date(e.ts * 1000).toLocaleTimeString()}</span><span class="m">${esc(e.m)}${e.n ? " @" + esc(e.n) : ""}</span></div>`);
+    if (logs.length >= LOG_CAP) break;
+  }
+  $("logs").innerHTML = logs.join("") || '<div class="empty">no activity logged yet</div>';
+
+  const age = Date.now() / 1000 - d.lastChecked;
+  const dot = $("liveDot"), txt = $("liveTxt");
+  if (!d.lastChecked) { txt.textContent = "no data yet"; dot.className = "dot"; }
+  else if (age < STALE_AFTER) {
+    txt.textContent = `live \u00b7 scanned ${rel(d.lastChecked)} \u00b7 ${d.shardsLive}/${SHARDS} shards`;
+    dot.className = "dot live";
+  } else {
+    txt.textContent = `stale \u00b7 last scan ${rel(d.lastChecked)}`;
+    dot.className = "dot stale";
+  }
+  document.title = d.frees.length ? `(${d.frees.length}) SNIPER` : "SNIPER";
+  $("footTxt").textContent =
+    `live feed \u00b7 refreshed ${rel(lastFetch / 1000)} \u00b7 polling every ${POLL_MS / 1000}s`;
+}
+
+function reveal() {
+  $("gate").style.display = "none";
+  $("app").hidden = false;
+  render();
+}
+
+async function tryUnlock(pass, persist) {
+  const blobs = Object.values(BLOBS);
+  if (!blobs.length) { $("gateErr").textContent = "no data published yet"; return false; }
+  let ok = false;
+  for (const b of blobs) {
+    try { await decryptBlob(b, pass); ok = true; break; } catch {}
+  }
+  if (!ok) return false;
+  KEY = pass;
+  if (persist) localStorage.setItem("snipe_key", pass);
+  await decryptAll();
+  reveal();
+  return true;
+}
+
+for (const el of document.querySelectorAll(".tab")) {
+  el.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+    el.classList.add("active");
+    for (const s of ["gfree", "gl"]) $(s).hidden = true;
+    $(el.dataset.t).hidden = false;
+  });
+}
+
+$("unlock").addEventListener("click", async () => {
+  $("gateErr").textContent = "checking\u2026";
+  const ok = await tryUnlock($("pass").value, true);
+  if (!ok) {
+    $("gateErr").textContent = "wrong passphrase";
+    const c = $("gatecard");
+    c.classList.remove("shake"); void c.offsetWidth; c.classList.add("shake");
+  }
+});
+$("pass").addEventListener("keydown", e => { if (e.key === "Enter") $("unlock").click(); });
+
+// The passphrase is remembered so you are not retyping it every visit, which
+// means anyone at this device can open the panel. LOCK forgets it. Reloading
+// rather than just hiding the app also drops the derived key and every
+// decrypted payload out of memory.
+$("lock").addEventListener("click", () => {
+  localStorage.removeItem("snipe_key");
+  location.reload();
+});
+
+(async function boot() {
+  $("gateErr").textContent = "fetching feed\u2026";
+  const n = await fetchFeed();
+  $("gateErr").textContent = n ? "" : "no data published yet";
+  const saved = localStorage.getItem("snipe_key");
+  if (saved && await tryUnlock(saved, false)) return;
+})();
+
+setInterval(async () => {
+  await fetchFeed();
+  if (!KEY) return;
+  await decryptAll();
+  render();
+}, POLL_MS);
+
+// a find is only useful while you are looking, so catch up the instant the
+// tab comes back to the foreground
+document.addEventListener("visibilitychange", async () => {
+  if (document.hidden || !KEY) return;
+  await fetchFeed();
+  await decryptAll();
+  render();
+});
+</script>
+</body>
+</html>
