@@ -17,8 +17,8 @@ no phone notifications — everything lands on the panel only.
 
 | Thing | Value |
 |---|---|
-| Repo | https://github.com/randomcharstohideprof/thetelehunter |
-| Panel | https://randomcharstohideprof.github.io/thetelehunter/ |
+| Repo | https://github.com/exo-clipper/tbhjustamcuserhunter |
+| Panel | https://exo-clipper.github.io/tbhjustamcuserhunter/ |
 | Live data | branches `feed-0` … `feed-17`, each holding one encrypted `frag.txt` |
 | Panel passphrase | stored ONLY in the `DASH_PASSPHRASE` secret — never in this repo |
 | Cost | $0 forever |

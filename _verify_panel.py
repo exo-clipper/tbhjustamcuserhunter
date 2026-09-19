@@ -21,7 +21,7 @@ PASS = os.environ.get("PANEL_PASS", "")
 if not PASS:
     sys.exit("set PANEL_PASS env var to the dashboard passphrase")
 
-SLUG = os.environ.get("PANEL_REPO", "randomcharstohideprof/thetelehunter")
+SLUG = os.environ.get("PANEL_REPO", "exo-clipper/tbhjustamcuserhunter")
 SHARDS = int(os.environ.get("SHARD_COUNT", "18"))
 BLOB_RE = re.compile(r"^[A-Za-z0-9+/=]{64,}$")
 
