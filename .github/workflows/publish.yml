@@ -2,7 +2,10 @@ name: publish
 # Deploys the panel itself. Findings do NOT come through here any more - each
 # shard force-pushes its own feed-<n> branch and the panel fetches those live,
 # so a find never waits on a Pages build. This only runs when the panel HTML
-# changes (plus a daily safety net).
+# changes (plus a daily safety net and manual dispatch).
+# Deployed via the Actions deploy-pages pipeline; the legacy gh-pages builder
+# fails instantly on this repo ("Page build failed"), so this is the reliable
+# path.
 on:
   push:
     branches: [main]
@@ -11,41 +14,38 @@ on:
     - cron: "23 4 * * *"
   workflow_dispatch: {}
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
 concurrency:
   group: pages-publish
   cancel-in-progress: true
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
-      - name: push panel to gh-pages
+      - name: prepare panel artifact
         run: |
-          git config user.name "sniper-bot"
-          git config user.email "sniper-bot@users.noreply.github.com"
-          git fetch origin gh-pages 2>/dev/null || true
-          if git rev-parse --verify origin/gh-pages >/dev/null 2>&1; then
-            git switch -C gh-pages origin/gh-pages
-          else
-            git switch --orphan gh-pages
-          fi
-          # legacy per-shard fragments: the panel reads the feed branches now
-          rm -rf shard_*.data.js frags index.html
           # Deliberately the CURRENT tip of main, not the sha that triggered
           # this run. A run can sit queued for hours (GitHub incidents do
           # happen), and publishing a stale panel over a newer one is worse
           # than publishing nothing.
           git fetch --depth 1 origin main
-          git show FETCH_HEAD:docs/index.html > index.html
-          touch .nojekyll
-          git add -A
-          if git diff --cached --quiet; then
-            echo "panel unchanged"
-          else
-            git commit -m "publish panel"
-            git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" gh-pages
-          fi
+          mkdir -p dist
+          git show FETCH_HEAD:docs/index.html > dist/index.html
+          touch dist/.nojekyll
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
