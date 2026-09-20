@@ -1,6 +1,9 @@
 # --- batch checking ---------------------------------------------------------
 BATCH_SIZE = 10        # names per POST (mojang bulk limit)
-BATCH_DELAY = 1.05     # seconds between POSTs per shard (~0.95 req/s per IP)
+BATCH_DELAY = 1.6      # seconds between POSTs per shard. 1.05 drew regular
+                       # HTTP 429s from mojang, tripping breakers and emptying
+                       # the board in bursts; 1.6 keeps the sweep inside the
+                       # 30-60s target (~37s per shard rotation) with headroom
 JITTER = 0.25          # +/- fraction applied to BATCH_DELAY
 
 # --- re-check intervals (seconds) -------------------------------------------
