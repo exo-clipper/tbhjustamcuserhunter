@@ -305,7 +305,9 @@ const feedURL = i => FEED_BASE
 
 let RAW = {};                // shard -> decrypted payload
 let BLOBS = {};              // shard -> ciphertext we last decrypted
-let KEY = null;
+let KEY = null;              // keyset {saltHex, cur, legacy} after unlock
+                             // (non-extractable CryptoKeys - never the raw
+                             // passphrase; that only lives inside tryUnlock)
 let lastFetch = 0;
 let seenNames = new Set();
 let firstPaint = true;
@@ -359,6 +361,75 @@ async function decryptBlob(b64, pass) {
   }
 }
 
+function hex(b) {
+  return Array.from(b, x => x.toString(16).padStart(2, "0")).join("");
+}
+
+// --- stored unlock -----------------------------------------------------------
+// The passphrase itself is NEVER written to disk. After a successful unlock we
+// keep only the derived AES CryptoKeys, which were imported/derived as
+// non-extractable - the browser can use them to decrypt but cannot be talked
+// into exporting the key bytes, so dev tools see an opaque object, not the
+// passphrase. They live in IndexedDB so you don't retype on every visit;
+// LOCK deletes them. Wiping storage (or LOCK) reverts to the passphrase gate.
+const KEYDB = "sniper", KEYSTORE = "keys", KEYID = "dash";
+
+function idb() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(KEYDB, 1);
+    r.onupgradeneeded = () => { r.result.createObjectStore(KEYSTORE); };
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function saveKeys(keyset) {
+  const db = await idb();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(KEYSTORE, "readwrite");
+    tx.objectStore(KEYSTORE).put(keyset, KEYID);
+    tx.oncomplete = res;
+    tx.onerror = () => rej(tx.error);
+  });
+}
+async function loadKeys() {
+  const db = await idb();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(KEYSTORE, "readonly");
+    const g = tx.objectStore(KEYSTORE).get(KEYID);
+    g.onsuccess = () => res(g.result || null);
+    g.onerror = () => rej(g.error);
+  });
+}
+async function forgetKeys() {
+  try {
+    const db = await idb();
+    await new Promise((res, rej) => {
+      const tx = db.transaction(KEYSTORE, "readwrite");
+      tx.objectStore(KEYSTORE).delete(KEYID);
+      tx.oncomplete = res;
+      tx.onerror = () => rej(tx.error);
+    });
+  } catch {}
+}
+
+// decrypt one blob with the stored keyset (no passphrase involved); refuses a
+// blob whose salt does not match, so a re-keyed feed falls back to the gate
+async function decryptBlobWithKeys(b64, keyset) {
+  const raw = b64ToBytes(b64);
+  const iv = raw.slice(16, 32), ct = raw.slice(32);
+  const saltHex = hex(raw.slice(0, 16));
+  if (saltHex !== keyset.saltHex) throw new Error("salt mismatch");
+  for (const iters of [PBKF_ITER, LEGACY_ITER]) {
+    try {
+      const key = iters === PBKF_ITER ? keyset.cur : keyset.legacy;
+      const pt = await crypto.subtle.decrypt({ name: "AES-CBC", iv }, key, ct);
+      return JSON.parse(new TextDecoder().decode(pt));
+    } catch (e) {
+      if (iters === LEGACY_ITER) throw e;
+    }
+  }
+}
+
 // pull every shard's branch straight off raw.githubusercontent; a missing
 // branch (shard never booted yet) is normal, not an error
 async function fetchFeed() {
@@ -383,7 +454,7 @@ async function decryptAll() {
   await Promise.all(Object.entries(BLOBS).map(async ([k, b]) => {
     if (RAW[k] && RAW[k].__blob === b) return;
     try {
-      const p = await decryptBlob(b, KEY);
+      const p = await decryptBlobWithKeys(b, KEY);
       p.__blob = b;
       RAW[k] = p;
     } catch { delete RAW[k]; }
@@ -498,13 +569,28 @@ function reveal() {
 async function tryUnlock(pass, persist) {
   const blobs = Object.values(BLOBS);
   if (!blobs.length) { $("gateErr").textContent = "no data published yet"; return false; }
-  let ok = false;
+  // validate on one blob first (all shards share the fixed feed salt)
+  let ok = false, salt = null;
   for (const b of blobs) {
-    try { await decryptBlob(b, pass); ok = true; break; } catch {}
+    try {
+      salt = b64ToBytes(b).slice(0, 16);
+      await decryptBlob(b, pass);
+      ok = true;
+      break;
+    } catch {}
   }
   if (!ok) return false;
-  KEY = pass;
-  if (persist) localStorage.setItem("snipe_key", pass);
+  // build the persistent keyset, then drop every trace of the raw passphrase:
+  // the derivation cache is keyed by passphrase, so clear it, and blank the
+  // input. From here on only non-extractable CryptoKeys hold the secret.
+  KEY = {
+    saltHex: hex(salt),
+    cur: await deriveKey(pass, salt, PBKF_ITER),
+    legacy: await deriveKey(pass, salt, LEGACY_ITER),
+  };
+  KEYS.clear();
+  if (persist) { try { await saveKeys(KEY); } catch {} }
+  $("pass").value = "";
   await decryptAll();
   reveal();
   return true;
@@ -530,21 +616,33 @@ $("unlock").addEventListener("click", async () => {
 });
 $("pass").addEventListener("keydown", e => { if (e.key === "Enter") $("unlock").click(); });
 
-// The passphrase is remembered so you are not retyping it every visit, which
-// means anyone at this device can open the panel. LOCK forgets it. Reloading
-// rather than just hiding the app also drops the derived key and every
-// decrypted payload out of memory.
-$("lock").addEventListener("click", () => {
-  localStorage.removeItem("snipe_key");
+// The passphrase is never stored - only the derived, non-extractable keys are
+// (IndexedDB), so you are not retyping on every visit yet the passphrase cannot
+// be read back out of the browser, even with dev tools. LOCK forgets the keys
+// and reloads, dropping them and every decrypted payload out of memory.
+$("lock").addEventListener("click", async () => {
+  await forgetKeys();
+  localStorage.removeItem("snipe_key");   // wipe leftovers from older builds
   location.reload();
 });
 
 (async function boot() {
   $("gateErr").textContent = "fetching feed\u2026";
+  localStorage.removeItem("snipe_key");   // older builds kept it there; gone
   const n = await fetchFeed();
   $("gateErr").textContent = n ? "" : "no data published yet";
-  const saved = localStorage.getItem("snipe_key");
-  if (saved && await tryUnlock(saved, false)) return;
+  const saved = await loadKeys();
+  if (!saved) return;
+  for (const b of Object.values(BLOBS)) {
+    try {
+      await decryptBlobWithKeys(b, saved);
+      KEY = saved;
+      await decryptAll();
+      reveal();
+      return;
+    } catch {}
+  }
+  await forgetKeys();                     // stale keyset (passphrase changed)
 })();
 
 setInterval(async () => {

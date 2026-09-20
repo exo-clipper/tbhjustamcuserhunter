@@ -145,9 +145,13 @@ device, so it is typed once, not daily.
   URL carries `x-access-token:<token>`, git quotes URLs back in errors, and
   Actions logs on a public repo are world-readable — GitHub's own masking is
   treated as a backstop, not the defence.
-- The passphrase is remembered in `localStorage` so you are not retyping it.
-  **LOCK** in the panel header forgets it and reloads, dropping the derived key
-  and every decrypted payload out of memory. Use it on a shared machine.
+- The passphrase itself is never stored. After a successful unlock the panel
+  keeps only the derived, **non-extractable** AES `CryptoKey`s — in memory and
+  in IndexedDB — so you are not retyping on every visit, yet the passphrase
+  cannot be read back out of the browser, even with dev tools or by dumping
+  browser storage. **LOCK** in the panel header deletes the keys and reloads,
+  dropping them and every decrypted payload out of memory. Use it on a shared
+  machine.
 - `tests/offline_test.py::test_no_secrets_in_tree` greps the working tree for
   real credential shapes (`gh*_`, `github_pat_`, PEM private keys, AWS/Slack/
   Telegram tokens, hardcoded `password = "..."`) and asserts the `.gitignore`
