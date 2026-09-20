@@ -43,10 +43,13 @@ Phone pushes were removed by choice.
 2. Each shard checks **batches of 10 names per POST** against two official
    bulk endpoints (`api.mojang.com` and `api.minecraftservices.com`), politely:
    ~1 POST/s per IP → **~180 names/s fleet-wide**.
-3. Three lanes per loop iteration:
+3. Four lanes per loop iteration, in priority order:
    - **Drop strikes** — names we watched get abandoned are locked for exactly
      **37 days** (Mojang rule). They are fast-polled starting 90 s before their
      unlock second and appear on the panel the moment they turn claimable.
+   - **Free re-checks** — every name currently marked claimable is re-verified
+     at least every **45 s** (`FREE_RECHECK`): the names you click deserve the
+     freshest verdicts, ahead of background work.
    - **Hot lane** — best ~160 names (ranked word frequency / brands) re-checked
      every **~10 s**.
    - **Full sweep** — all ~4,100 watched names at least every ~30–60 s.
@@ -61,7 +64,10 @@ Phone pushes were removed by choice.
    **There is no GitHub Pages build in the data path** — Pages only ships the
    HTML, and only when the HTML itself changes.
 6. The panel shows **only names verified claimable right now** — nothing else,
-   and never a name Minecraft's profanity filter would refuse.
+   and never a name Minecraft's profanity filter would refuse. "Right now" is
+   enforced twice: a free verdict older than **60 s** (`PANEL_FRESH`) is never
+   published by a shard, and the panel independently drops anything older than
+   60 s at draw time — so every card is claimable on the spot or it is gone.
 
 ### Why some free-looking names don't show immediately
 

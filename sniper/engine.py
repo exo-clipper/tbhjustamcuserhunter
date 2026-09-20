@@ -28,8 +28,8 @@ def alert(platform: str, name: str) -> None:
 
 
 class PlatformRunner:
-    """Batch-paced watcher: drop strikes > history probes > hot lane >
-    full sweep > free re-checks."""
+    """Batch-paced watcher: drop strikes > history probes > free re-checks >
+    hot lane > full sweep."""
 
     def __init__(self, store, checker, delay=None, quiet=False):
         self.store = store
@@ -84,6 +84,14 @@ class PlatformRunner:
         )
         batch.extend(strikes)
         probes = self.store.claim_probes(self.platform, settings.PROBE_EVERY, 2)
+        if len(batch) < cap - 3:
+            # free names outrank every background lane: these are what the user
+            # is about to click, and a stale "free" verdict is a dead click
+            frees = self.store.claim_free(
+                self.platform, settings.FREE_RECHECK, min(4, cap - len(batch))
+            )
+            seen = set(batch)
+            batch.extend(n for n in frees if n not in seen)
         if len(batch) < cap - 3:
             hot = self.store.claim_hot(
                 self.platform, self.hot, settings.HOT_RECHECK, min(5, cap - len(batch))

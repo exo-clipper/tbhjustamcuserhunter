@@ -351,9 +351,10 @@ def cmd_pace(_args) -> None:
     print(f"  minecraft: batches of {settings.BATCH_SIZE}, 1 POST every "
           f"~{settings.BATCH_DELAY}s per IP (+/-{int(settings.JITTER * 100)}% jitter) "
           f"= ~{settings.BATCH_SIZE / settings.BATCH_DELAY:.0f} names/s per shard")
+    frec = (f"{settings.FREE_RECHECK:.0f}s" if settings.FREE_RECHECK < 60
+            else f"{settings.FREE_RECHECK // 60:.0f}min")
     print(f"  sweep    : every name at least every {settings.SWEEP_INTERVAL:.0f}s; "
-          f"fast lane every {settings.HOT_RECHECK:.0f}s; free re-check every "
-          f"{settings.FREE_RECHECK // 60}min")
+          f"fast lane every {settings.HOT_RECHECK:.0f}s; free re-check every {frec}")
     print(f"  lifecycle: dropped names locked {settings.COOLDOWN // 86400} days; "
           f"strike window starts {settings.STRIKE_LEAD:.0f}s before unlock")
     print(f"  breaker  : {settings.BREAKER_THRESHOLD} throttle signals -> pause "

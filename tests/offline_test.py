@@ -5,6 +5,7 @@ import os
 import re
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -201,16 +202,41 @@ def test_exporter() -> list[str]:
         db.unlink()
     st = Store(db)
     st.add_names("minecraft", ["freeone", "takenone", "lockedone"])
-    st.record_result("minecraft", "freeone", False, now=100.0)
-    st.record_probe("minecraft", "freeone", False, now=110.0)
-    st.record_result("minecraft", "takenone", True, now=100.0)
-    st.record_result("minecraft", "lockedone", True, now=100.0)
-    st.record_result("minecraft", "lockedone", False, cooldown=37 * 86400, now=200.0)
+    now = time.time()
+    st.record_result("minecraft", "freeone", False, now=now - 10.0)
+    st.record_probe("minecraft", "freeone", False, now=now - 5.0)
+    st.record_result("minecraft", "takenone", True, now=now - 10.0)
+    st.record_result("minecraft", "lockedone", True, now=now - 10.0)
+    st.record_result("minecraft", "lockedone", False,
+                     cooldown=37 * 86400, now=now - 2.0)
     payload = build_payload(st, 3)
     names = [r["n"] for r in payload["free"]]
     ok = names == ["freeone"] and payload["counts"]["locked"] == 1
     print(f"{'PASS' if ok else 'FAIL'} exporter free-only: {names} counts={payload['counts']}")
     if not ok:
+        fails.append("exporter")
+
+    # claim-on-the-spot: a free verdict older than PANEL_FRESH must never be
+    # published, and must reappear the moment the shard re-confirms it
+    st.add_names("minecraft", ["stalefree"])
+    st.conn.execute(
+        "UPDATE names SET available = 1, last_checked = ?, changed_at = ? "
+        "WHERE name = 'stalefree'",
+        (now - 300, now - 300),
+    )
+    st.conn.commit()
+    stale = build_payload(st, 3)
+    ok2 = "stalefree" not in [r["n"] for r in stale["free"]]
+    print(f"{'PASS' if ok2 else 'FAIL'} stale free withheld from the panel: "
+          f"{[r['n'] for r in stale['free']]}")
+    if not ok2:
+        fails.append("exporter")
+    st.record_result("minecraft", "stalefree", False, now=now - 1.0)
+    back = build_payload(st, 3)
+    ok3 = sorted(r["n"] for r in back["free"]) == ["freeone", "stalefree"]
+    print(f"{'PASS' if ok3 else 'FAIL'} re-confirmed free returns: "
+          f"{[r['n'] for r in back['free']]}")
+    if not ok3:
         fails.append("exporter")
     st.conn.close()
     db.unlink()
@@ -293,12 +319,22 @@ def test_feed() -> list[str]:
     # from state that predates the blocklist entry
     for name in ("zelda", "shag", "taken"):
         st.add_names("minecraft", [name])
+    now = time.time()
     st.conn.execute(
-        "UPDATE names SET available = 1, last_checked = 500, changed_at = 400 "
-        "WHERE name IN ('zelda', 'shag')"
+        "UPDATE names SET available = 1, last_checked = ?, changed_at = ? "
+        "WHERE name IN ('zelda', 'shag')",
+        (now - 5, now - 30),
     )
     st.conn.execute(
-        "UPDATE names SET available = 0, last_checked = 500 WHERE name = 'taken'"
+        "UPDATE names SET available = 0, last_checked = ? WHERE name = 'taken'",
+        (now - 5,),
+    )
+    # a free verdict far outside the claim-on-the-spot window
+    st.add_names("minecraft", ["oldfree"])
+    st.conn.execute(
+        "UPDATE names SET available = 1, last_checked = ?, changed_at = ? "
+        "WHERE name = 'oldfree'",
+        (now - 400, now - 400),
     )
     st.log_event("minecraft", "zelda", "claimable (verified via history)")
     st.log_event("minecraft", "shag", "claimable (verified via history)")
@@ -307,7 +343,9 @@ def test_feed() -> list[str]:
     payload = build_payload(st, 5, exporter.FEED_EVENTS)
     check("blocked name kept off the panel",
           [r["n"] for r in payload["free"]], ["zelda"])
-    check("blocked name kept out of counts", payload["counts"]["total"], 2)
+    check("stale free withheld from the panel",
+          "oldfree" in [r["n"] for r in payload["free"]], False)
+    check("blocked name kept out of counts", payload["counts"]["total"], 3)
     check("blocked name kept out of the log",
           [e["n"] for e in payload["events"]], ["zelda"])
 
@@ -335,8 +373,9 @@ def test_feed() -> list[str]:
           exporter.peek_fingerprint(st, 5), fp)
     st.add_names("minecraft", ["wolf"])
     st.conn.execute(
-        "UPDATE names SET available = 1, last_checked = 600, changed_at = 600 "
-        "WHERE name = 'wolf'"
+        "UPDATE names SET available = 1, last_checked = ?, changed_at = ? "
+        "WHERE name = 'wolf'",
+        (now - 5, now - 5),
     )
     st.conn.commit()
     check("fingerprint moves on a new find",

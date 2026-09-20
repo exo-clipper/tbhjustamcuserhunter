@@ -6,8 +6,15 @@ JITTER = 0.25          # +/- fraction applied to BATCH_DELAY
 # --- re-check intervals (seconds) -------------------------------------------
 SWEEP_INTERVAL = 30.0  # min gap between checks of the same name
 HOT_RECHECK = 10.0     # fast-lane: hot names at least this often
-FREE_RECHECK = 900.0   # confirm still-free every 15 min
+FREE_RECHECK = 45.0    # names marked free are re-verified at least this often,
+                       # so a card can honestly claim "confirmed <1 min ago"
 PROBE_EVERY = 900.0    # re-probe unknown-history names every 15 min
+
+# --- panel freshness -----------------------------------------------------------
+# The panel must never show a name the user cannot claim on the spot. A "free"
+# verdict older than this is stale (it may have been claimed seconds later), so
+# the exporter refuses to publish it and the panel refuses to draw it.
+PANEL_FRESH = 60.0
 
 # --- mojang name lifecycle ---------------------------------------------------
 COOLDOWN = 37 * 86400.0  # dropped names are locked for exactly 37 days

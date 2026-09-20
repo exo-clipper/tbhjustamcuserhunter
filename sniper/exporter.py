@@ -13,7 +13,12 @@ FEED_EVENTS = 40
 FRAGMENT_EVENTS = 300
 
 
-def build_payload(store, shard_idx: int, event_limit: int = FRAGMENT_EVENTS) -> dict:
+def build_payload(
+    store, shard_idx: int, event_limit: int = FRAGMENT_EVENTS,
+    now: float | None = None,
+) -> dict:
+    now = time.time() if now is None else now
+    fresh_floor = now - settings.PANEL_FRESH
     conn = store.conn
     counts = {"total": 0, "free": 0, "taken": 0, "unknown": 0, "locked": 0}
     free = []
@@ -30,7 +35,11 @@ def build_payload(store, shard_idx: int, event_limit: int = FRAGMENT_EVENTS) -> 
             last_checked = lc
         if avail == 1:
             counts["free"] += 1
-            free.append({"n": name, "t": int(ca), "c": int(lc), "l": len(name)})
+            # the panel only draws what is claimable on the spot: a free
+            # verdict older than PANEL_FRESH may already have been claimed by
+            # someone else, so it never leaves this shard
+            if lc >= fresh_floor:
+                free.append({"n": name, "t": int(ca), "c": int(lc), "l": len(name)})
         elif avail == 0:
             counts["taken"] += 1
         elif avail == 2:

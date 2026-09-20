@@ -276,6 +276,7 @@
 <script>
 "use strict";
 const SHARDS = 18, PBKF_ITER = 1200000, CARD_CAP = 400, LOG_CAP = 250;
+const FRESH_S = 60;          // never draw a "free" verdict older than this
 const LEGACY_ITER = 120000;  // shim: blobs from a shard still on older code
 const POLL_MS = 12000;       // the feed is a branch, not a Pages build
 const NEW_FOR = 180;         // seconds a find keeps its NEW badge
@@ -470,8 +471,15 @@ function merge() {
   for (const p of Object.values(RAW)) {
     if (!p || typeof p !== "object") continue;
     shardsLive++;
-    lastChecked = Math.max(lastChecked, p.last_checked || 0, p.generated || 0);
+    // this shard's own scan clock; comparing against it (not ours) absorbs
+    // any client/server clock skew
+    const clock = Math.max(p.last_checked || 0, p.generated || 0);
+    lastChecked = Math.max(lastChecked, clock);
     for (const f of p.free || []) {
+      // claim-on-the-spot rule: a "free" verdict older than FRESH_S seconds
+      // may already belong to someone else, so it never reaches the grid.
+      // Normally the shards already filter these; this is the second lock.
+      if (clock - (f.c || f.t || 0) > FRESH_S) continue;
       const cur = frees.get(f.n);
       if (!cur || f.t > cur.t) frees.set(f.n, f);
     }
