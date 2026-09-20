@@ -1,9 +1,9 @@
 # --- batch checking ---------------------------------------------------------
 BATCH_SIZE = 10        # names per POST (mojang bulk limit)
-BATCH_DELAY = 1.6      # seconds between POSTs per shard. 1.05 drew regular
-                       # HTTP 429s from mojang, tripping breakers and emptying
-                       # the board in bursts; 1.6 keeps the sweep inside the
-                       # 30-60s target (~37s per shard rotation) with headroom
+BATCH_DELAY = 2.0      # seconds between POSTs per shard. 1.05 and 1.6 both
+                       # still drew HTTP 429s from mojang (shared runner IPs
+                       # get throttled as a range), so 2.0 is the working rate;
+                       # sweep rotation ~46s, still inside the 30-60s target
 JITTER = 0.25          # +/- fraction applied to BATCH_DELAY
 
 # --- re-check intervals (seconds) -------------------------------------------
@@ -26,7 +26,10 @@ STRIKE_LEAD = 90.0       # fast-poll a pending drop this many seconds early
 # --- circuit breaker ----------------------------------------------------------
 BREAKER_THRESHOLD = 3    # throttle signals before pausing the shard
 BREAKER_START = 300.0    # first pause: 5 min, doubles per trip...
-BREAKER_MAX = 21600.0    # ...capped at 6 h
+BREAKER_MAX = 1800.0     # ...capped at 30 min. Shared runner IPs can stay
+                         # flagged for hours; a shard must not vanish for 6 h
+                         # over one bad IP - it resumes and retries at the
+                         # safe rate instead
 UNKNOWN_STRIKE_LIMIT = 8 # consecutive junk responses -> treat as throttling
 
 HOT_MAX = 160            # size of the fast lane
