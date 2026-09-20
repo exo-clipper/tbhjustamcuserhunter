@@ -380,6 +380,18 @@ def test_feed() -> list[str]:
     st.conn.commit()
     check("fingerprint moves on a new find",
           exporter.peek_fingerprint(st, 5) != fp, True)
+    fp2 = exporter.peek_fingerprint(st, 5)
+
+    # claim-on-the-spot, part 2: re-confirming a still-free name must move the
+    # fingerprint so the blob's "confirmed" timestamps reach the panel instead
+    # of silently aging on the board until the heartbeat
+    st.conn.execute(
+        "UPDATE names SET last_checked = ? WHERE name = 'zelda'",
+        (now + 45,),
+    )
+    st.conn.commit()
+    check("fingerprint moves on a free re-confirmation",
+          exporter.peek_fingerprint(st, 5) != fp2, True)
 
     st.conn.close()
     for p in (db, out):

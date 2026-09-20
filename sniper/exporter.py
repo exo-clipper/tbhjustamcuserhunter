@@ -66,12 +66,19 @@ def build_payload(
 
 
 def fingerprint(payload: dict) -> str:
-    """What the panel would visibly change by. Deliberately ignores clocks
-    and check counters so a quiet shard does not push every few seconds."""
+    """What the panel would visibly change by. Deliberately ignores check
+    counters so a quiet shard does not push every few seconds — but a
+    re-confirmed free name DOES count as visible news: without this the blob's
+    "confirmed" timestamps could lag reality by a whole heartbeat, which is
+    exactly the stale-card problem. Folded into coarse buckets so normal
+    re-checks land in the same bucket and quiet shards still stay quiet."""
     names = sorted(r["n"] for r in payload["free"])
+    buckets = [int(r["c"] // settings.FP_REFRESH_BUCKET)
+               for r in payload["free"]]
     newest = payload["events"][0] if payload["events"] else {}
     seed = json.dumps(
-        [names, payload["counts"]["free"], newest.get("ts"), newest.get("n")],
+        [names, buckets, payload["counts"]["free"], newest.get("ts"),
+         newest.get("n")],
         separators=(",", ":"),
     )
     return hashlib.sha256(seed.encode()).hexdigest()[:16]
