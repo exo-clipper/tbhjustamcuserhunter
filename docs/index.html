@@ -475,11 +475,18 @@ function merge() {
     // any client/server clock skew
     const clock = Math.max(p.last_checked || 0, p.generated || 0);
     lastChecked = Math.max(lastChecked, clock);
+    const nowS = Date.now() / 1000;
+    // a blob whose own clock is minutes behind ours belongs to a dead or
+    // queued shard - its "free" verdicts cannot be trusted on the spot either
+    const dead = nowS - clock > FRESH_S + 120;
     for (const f of p.free || []) {
-      // claim-on-the-spot rule: a "free" verdict older than FRESH_S seconds
-      // may already belong to someone else, so it never reaches the grid.
+      // claim-on-the-spot rule, enforced twice: against the shard's clock
+      // (skew-immune) and against ours (kills leftovers from dead shards;
+      // +15s headroom for normal NTP jitter so live cards never flicker).
       // Normally the shards already filter these; this is the second lock.
-      if (clock - (f.c || f.t || 0) > FRESH_S) continue;
+      const c = f.c || f.t || 0;
+      if (clock - c > FRESH_S) continue;
+      if (dead || nowS - c > FRESH_S + 15) continue;
       const cur = frees.get(f.n);
       if (!cur || f.t > cur.t) frees.set(f.n, f);
     }
