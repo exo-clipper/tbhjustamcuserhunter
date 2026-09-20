@@ -828,7 +828,6 @@ dies
 diet
 diff
 digs
-dike
 dill
 dime
 dina
@@ -2009,7 +2008,6 @@ jill
 jina
 jinn
 jinx
-jiss
 jlle
 joan
 jobs
@@ -2596,7 +2594,6 @@ nass
 nato
 navy
 ncaa
-ndde
 nddi
 ndee
 neal
