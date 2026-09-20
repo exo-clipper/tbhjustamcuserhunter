@@ -238,7 +238,9 @@ tests/                      offline checker/store/exporter/blocklist/feed tests 
 _paneltest.py               builds a fake local feed so the panel can be browser-tested
 _verify_panel.py            decrypts the live feed branches from the CLI
 .github/workflows/watch.yml the 18-shard fleet (the whole cloud operation)
-.github/workflows/publish.yml  ships docs/index.html to gh-pages (panel only, no data)
+.github/workflows/publish.yml  deploys docs/index.html via Actions deploy-pages
+                               (panel only, no data; legacy gh-pages builder
+                               fails on this repo)
 ```
 
 ## Local commands (optional — PC not required)
