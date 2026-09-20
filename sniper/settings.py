@@ -44,7 +44,9 @@ FEED_FILE = "frag.txt"
 FLUSH_POLL = 5.0            # how often a shard checks whether it has news
 FLUSH_FIRST_DELAY = 45.0    # first snapshot goes out this soon after boot
 FLUSH_MIN_GAP = 15.0        # floor between pushes when finds keep landing
-FLUSH_HEARTBEAT = 240.0     # push anyway, so "last scan" stays honest
+FLUSH_HEARTBEAT = 120.0     # push anyway, so "last scan" stays honest and a
+                            # quiet shard's blob never looks abandoned (240s
+                            # used to trip the panel's dead-shard guard)
 STAGGER_PER_SHARD = 3.0     # spread the fleet's heartbeats out a little
 # A re-confirmed free name must reach the panel quickly even when nothing else
 # visibly changed: the fingerprint folds each confirmation time into a bucket
