@@ -170,11 +170,20 @@ async def flusher_task(runner: PlatformRunner, store: Store, idx: int) -> None:
             if not due:
                 await asyncio.sleep(settings.FLUSH_POLL)
                 continue
+            t0 = time.monotonic()
             fp = exporter.write_feed(store, idx, out, passphrase)
+            built = time.monotonic()
             ok = await asyncio.get_running_loop().run_in_executor(
                 None, push_feed, out, idx
             )
+            pushed = time.monotonic()
             last_push = time.monotonic()
+            if pushed - built > 20:
+                # github occasionally queues pushes for minutes; log it so
+                # panel staleness can be attributed from the job log alone
+                print(f"[flush] shard {idx}: slow push "
+                      f"{pushed - built:.0f}s (built in {built - t0:.1f}s)",
+                      flush=True)
             if ok:
                 sent_fp = fp
                 line = f"[flush] shard {idx}: live ({runner.found_free} claimable)"

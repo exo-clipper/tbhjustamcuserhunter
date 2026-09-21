@@ -43,7 +43,10 @@ FEED_BRANCH = "feed-{idx}"   # one branch per shard = force-push, never a race
 FEED_FILE = "frag.txt"
 FLUSH_POLL = 5.0            # how often a shard checks whether it has news
 FLUSH_FIRST_DELAY = 45.0    # first snapshot goes out this soon after boot
-FLUSH_MIN_GAP = 15.0        # floor between pushes when finds keep landing
+FLUSH_MIN_GAP = 25.0        # floor between pushes when finds keep landing.
+                            # git pushes from runners started queueing for
+                            # minutes when the fleet pushed hundreds of times
+                            # per hour - this caps that back
 FLUSH_HEARTBEAT = 120.0     # push anyway, so "last scan" stays honest and a
                             # quiet shard's blob never looks abandoned (240s
                             # used to trip the panel's dead-shard guard)
@@ -52,7 +55,7 @@ STAGGER_PER_SHARD = 3.0     # spread the fleet's heartbeats out a little
 # visibly changed: the fingerprint folds each confirmation time into a bucket
 # of this many seconds, so any free re-check triggers a fresh push within
 # roughly one bucket instead of waiting for the FLUSH_HEARTBEAT.
-FP_REFRESH_BUCKET = 15.0
+FP_REFRESH_BUCKET = 30.0
 
 # --- panel crypto --------------------------------------------------------------
 # The repo has to stay public (that is what makes 24/7 Actions free), so every
