@@ -50,7 +50,10 @@ FLUSH_MIN_GAP = 25.0        # floor between pushes when finds keep landing.
 FLUSH_HEARTBEAT = 120.0     # push anyway, so "last scan" stays honest and a
                             # quiet shard's blob never looks abandoned (240s
                             # used to trip the panel's dead-shard guard)
-STAGGER_PER_SHARD = 3.0     # spread the fleet's heartbeats out a little
+STAGGER_PER_SHARD = 6.5     # spread shard flushes evenly across the heartbeat
+                            # (idx * this = 117s spread for 18 shards); when
+                            # all 18 heartbeats fired in phase, the burst got
+                            # push-queued by github and blobs went stale together
 # A re-confirmed free name must reach the panel quickly even when nothing else
 # visibly changed: the fingerprint folds each confirmation time into a bucket
 # of this many seconds, so any free re-check triggers a fresh push within

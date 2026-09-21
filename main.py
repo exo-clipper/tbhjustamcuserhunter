@@ -155,7 +155,7 @@ async def flusher_task(runner: PlatformRunner, store: Store, idx: int) -> None:
     if not passphrase:
         print("[flush] DASH_PASSPHRASE unset; live panel feed disabled", flush=True)
         return
-    offset = (idx % 8) * settings.STAGGER_PER_SHARD
+    offset = idx * settings.STAGGER_PER_SHARD
     out = os.path.join(ROOT, "frag_live", f"shard_{idx}.data")
     last_print = ""
     sent_fp = None
