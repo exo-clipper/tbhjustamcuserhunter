@@ -79,37 +79,64 @@ class PlatformRunner:
     def _compose(self) -> tuple[list[str], list[str]]:
         cap = settings.BATCH_SIZE
         batch: list[str] = []
-        strikes = self.store.claim_strikes(
-            self.platform, settings.COOLDOWN, settings.STRIKE_LEAD, cap
-        )
-        batch.extend(strikes)
+        seen: set[str] = set()
         probes = self.store.claim_probes(self.platform, settings.PROBE_EVERY, 2)
-        if len(batch) < cap - 3:
-            # free names outrank every background lane: these are what the user
-            # is about to click, and a stale "free" verdict is a dead click
+
+        # 1) free re-checks first, always. These are the names the user is
+        #    about to click; when a cluster of 37-day unlocks saturates the
+        #    strike lane, frees must not starve behind it.
+        if cap:
             frees = self.store.claim_free(
-                self.platform, settings.FREE_RECHECK, min(4, cap - len(batch))
+                self.platform, settings.FREE_RECHECK, min(4, cap)
             )
-            seen = set(batch)
-            batch.extend(n for n in frees if n not in seen)
-        if len(batch) < cap - 3:
+            for n in frees:
+                if n not in seen:
+                    batch.append(n)
+                    seen.add(n)
+
+        # 2) drop strikes: fast-poll toward each unlock second. One batch of
+        #    delay is harmless (the poll repeats every cycle).
+        if len(batch) < cap:
+            strikes = self.store.claim_strikes(
+                self.platform, settings.COOLDOWN, settings.STRIKE_LEAD,
+                cap - len(batch),
+            )
+            for n in strikes:
+                if n not in seen:
+                    batch.append(n)
+                    seen.add(n)
+
+        # 3) hot lane
+        if len(batch) < cap:
             hot = self.store.claim_hot(
-                self.platform, self.hot, settings.HOT_RECHECK, min(5, cap - len(batch))
+                self.platform, self.hot, settings.HOT_RECHECK,
+                min(5, cap - len(batch)),
             )
-            seen = set(batch)
-            batch.extend(n for n in hot if n not in seen)
+            for n in hot:
+                if n not in seen:
+                    batch.append(n)
+                    seen.add(n)
+
+        # 4) full sweep
         if len(batch) < cap:
             regular = self.store.claim(
                 self.platform, settings.SWEEP_INTERVAL, cap - len(batch)
             )
-            seen = set(batch)
-            batch.extend(n for n in regular if n not in seen)
+            for n in regular:
+                if n not in seen:
+                    batch.append(n)
+                    seen.add(n)
+
+        # 5) spare capacity: more free re-checks
         if len(batch) < cap:
             frees = self.store.claim_free(
                 self.platform, settings.FREE_RECHECK, cap - len(batch)
             )
-            seen = set(batch)
-            batch.extend(n for n in frees if n not in seen)
+            for n in frees:
+                if n not in seen:
+                    batch.append(n)
+                    seen.add(n)
+
         return batch[:cap], probes
 
     async def _handle_batch(self, names: list[str]) -> None:

@@ -52,7 +52,7 @@ STAGGER_PER_SHARD = 3.0     # spread the fleet's heartbeats out a little
 # visibly changed: the fingerprint folds each confirmation time into a bucket
 # of this many seconds, so any free re-check triggers a fresh push within
 # roughly one bucket instead of waiting for the FLUSH_HEARTBEAT.
-FP_REFRESH_BUCKET = 30.0
+FP_REFRESH_BUCKET = 15.0
 
 # --- panel crypto --------------------------------------------------------------
 # The repo has to stay public (that is what makes 24/7 Actions free), so every
