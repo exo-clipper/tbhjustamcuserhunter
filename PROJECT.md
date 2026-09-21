@@ -64,10 +64,12 @@ Phone pushes were removed by choice.
    **There is no GitHub Pages build in the data path** — Pages only ships the
    HTML, and only when the HTML itself changes.
 6. The panel shows **only names verified claimable right now** — nothing else,
-   and never a name Minecraft's profanity filter would refuse. "Right now" is
-   enforced twice: a free verdict older than **60 s** (`PANEL_FRESH`) is never
-   published by a shard, and the panel independently drops anything older than
-   60 s at draw time — so every card is claimable on the spot or it is gone.
+   and never a name Minecraft's profanity filter would refuse. A card stays on
+   the board while its shard keeps re-verifying it free (every ~45 s) and is
+   removed within about a minute of a check saying it is taken. If a shard
+   cannot check at all (throttle pause), its names step aside once the verdict
+   is older than **5 min** (`PANEL_FRESH`), because the system can no longer
+   promise them — the exporter stops publishing them at the same threshold.
 
 ### Why some free-looking names don't show immediately
 

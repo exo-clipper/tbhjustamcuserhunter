@@ -276,7 +276,10 @@
 <script>
 "use strict";
 const SHARDS = 18, PBKF_ITER = 1200000, CARD_CAP = 400, LOG_CAP = 250;
-const FRESH_S = 60;          // never draw a "free" verdict older than this
+const SHARD_TRUST_S = 300;   // keep a card while its shard verified it free
+                             // within the last 5 min; past that the shard is
+                             // stalled or paused and its verdicts can't be
+                             // trusted, so its cards step aside
 const LEGACY_ITER = 120000;  // shim: blobs from a shard still on older code
 const POLL_MS = 12000;       // the feed is a branch, not a Pages build
 const NEW_FOR = 180;         // seconds a find keeps its NEW badge
@@ -476,17 +479,13 @@ function merge() {
     const clock = Math.max(p.last_checked || 0, p.generated || 0);
     lastChecked = Math.max(lastChecked, clock);
     const nowS = Date.now() / 1000;
-    // a blob whose own clock is minutes behind ours belongs to a dead or
-    // queued shard - its "free" verdicts cannot be trusted on the spot either
-    const dead = nowS - clock > FRESH_S + 120;
+    // trust rule: a card stays on the board while its shard keeps verifying
+    // it free (every ~45s); it is removed the moment a check says "taken".
+    // Only a shard that has gone silent for SHARD_TRUST_S (stalled or paused,
+    // so its verdicts can't be trusted any more) has its cards step aside.
+    const trusted = nowS - clock <= SHARD_TRUST_S;
     for (const f of p.free || []) {
-      // claim-on-the-spot rule, enforced twice: against the shard's clock
-      // (skew-immune) and against ours (kills leftovers from dead shards;
-      // +15s headroom for normal NTP jitter so live cards never flicker).
-      // Normally the shards already filter these; this is the second lock.
-      const c = f.c || f.t || 0;
-      if (clock - c > FRESH_S) continue;
-      if (dead || nowS - c > FRESH_S + 15) continue;
+      if (!trusted) continue;
       const cur = frees.get(f.n);
       if (!cur || f.t > cur.t) frees.set(f.n, f);
     }

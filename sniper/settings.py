@@ -14,10 +14,12 @@ FREE_RECHECK = 45.0    # names marked free are re-verified at least this often,
 PROBE_EVERY = 900.0    # re-probe unknown-history names every 15 min
 
 # --- panel freshness -----------------------------------------------------------
-# The panel must never show a name the user cannot claim on the spot. A "free"
-# verdict older than this is stale (it may have been claimed seconds later), so
-# the exporter refuses to publish it and the panel refuses to draw it.
-PANEL_FRESH = 60.0
+# The board must never show a name the user cannot claim. A "free" verdict is
+# only published while it is fresh enough to trust (PANEL_FRESH); once a check
+# says a name is taken it leaves the payload immediately, so the panel drops it
+# within roughly a minute. If a shard cannot check at all (throttle pause),
+# its verdicts age out after the same window and its names step aside.
+PANEL_FRESH = 300.0
 
 # --- mojang name lifecycle ---------------------------------------------------
 COOLDOWN = 37 * 86400.0  # dropped names are locked for exactly 37 days

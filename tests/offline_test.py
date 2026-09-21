@@ -216,13 +216,14 @@ def test_exporter() -> list[str]:
     if not ok:
         fails.append("exporter")
 
-    # claim-on-the-spot: a free verdict older than PANEL_FRESH must never be
-    # published, and must reappear the moment the shard re-confirms it
+    # claim-on-the-spot: a free verdict outside the trust window (PANEL_FRESH)
+    # must never be published, and must reappear the moment the shard
+    # re-confirms it
     st.add_names("minecraft", ["stalefree"])
     st.conn.execute(
         "UPDATE names SET available = 1, last_checked = ?, changed_at = ? "
         "WHERE name = 'stalefree'",
-        (now - 300, now - 300),
+        (now - 400, now - 400),
     )
     st.conn.commit()
     stale = build_payload(st, 3)
