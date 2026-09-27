@@ -33,11 +33,12 @@ Phone pushes were removed by choice.
 ## How it works
 
 1. A GitHub Action keeps **18 parallel shards** alive ~165 min each, one job per
-   shard, each with its own runner IP. Every shard job is pinned to its own
-   `watcher-<n>` concurrency group and a 15-min cron keeps proposing a fresh
-   wave: GitHub parks each proposal behind the shard that is still running and
-   discards any older pending one, so **exactly one successor is always waiting**
-   and a dead shard is picked back up within ~15 min. Nothing to restart by hand.
+   shard, each with its own runner IP. Continuity is double-locked: a `chain`
+   workflow proposes a fresh wave the moment the current one completes (gap of
+   seconds), and a 15-min cron acts as the safety net. GitHub parks each
+   proposal behind the shard that is still running and discards any older
+   pending one, so **exactly one successor is always waiting**. Nothing to
+   restart by hand.
    18 (not 20) because GitHub Free allows 20 concurrent jobs and the panel
    deploy must not queue behind the fleet — that is what broke it before.
 2. Each shard checks **batches of 10 names per POST** against two official

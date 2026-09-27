@@ -1,0 +1,28 @@
+name: chain
+# Continuity: the moment a watch wave completes, propose the next one. The
+# 15-min cron in watch.yml is the safety net (github schedules are sometimes
+# minutes late or skipped), but this chain keeps the gap between waves to
+# seconds so there is never a coverage hole. Deliberately a separate workflow:
+# a workflow cannot listen to its own workflow_run.
+on:
+  workflow_run:
+    workflows: [watch]
+    types: [completed]
+permissions:
+  actions: write
+jobs:
+  rearm:
+    # success only: a watch run that fails outright should not hot-loop; the
+    # cron proposes a fresh wave within 15 min either way
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: propose the next watch wave
+        run: |
+          gh api -X POST \
+            "repos/${{ github.repository }}/actions/workflows/watch.yml/dispatches" \
+            -f ref=${{ github.event.workflow_run.head_branch }} \
+            -f 'inputs[loop_minutes]=165'
