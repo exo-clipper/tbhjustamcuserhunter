@@ -191,6 +191,12 @@ def main() -> None:
 
     watchlist = sorted(base | gen_kept)
 
+    # notable.txt = the "good names" (real words, human names, brands, terms -
+    # NOT the generated pattern junk). telegram alerts fire only for these.
+    notable = sorted(base)
+    DATA.joinpath("notable.txt").write_text(
+        "\n".join(notable) + "\n", encoding="utf-8")
+
     # --- hot lane ranking ----------------------------------------------------
     g_rank = {w: i for i, w in enumerate(google)}
 

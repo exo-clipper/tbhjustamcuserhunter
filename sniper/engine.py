@@ -19,6 +19,8 @@ ALERT_LOG = DATA_DIR / "alerts.log"
 def alert(platform: str, name: str) -> None:
     line = f"*** {platform.upper()} {name} IS CLAIMABLE -> minecraft.net profile"
     print(f"\n{GREEN}{line}{RESET}\a", flush=True)
+    from . import notify
+    notify.enqueue(name)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y-%m-%d %H:%M:%S")
     with open(ALERT_LOG, "a", encoding="utf-8") as f:

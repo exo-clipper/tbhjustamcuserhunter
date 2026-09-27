@@ -88,7 +88,8 @@ def _redact(text: str) -> str:
     token, so nothing from a subprocess gets printed unfiltered - GitHub's own
     secret masking is a nice backstop, not something to depend on."""
     out = re.sub(r"(https?://)[^\s/@]*:[^\s/@]*@", r"\1***:***@", text)
-    for var in ("GH_TOKEN", "GITHUB_TOKEN", "DASH_PASSPHRASE"):
+    for var in ("GH_TOKEN", "GITHUB_TOKEN", "DASH_PASSPHRASE",
+                "TELEGRAM_BOT_TOKEN"):
         val = os.environ.get(var, "").strip()
         if len(val) > 3:
             out = out.replace(val, "***")

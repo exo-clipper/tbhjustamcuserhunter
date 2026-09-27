@@ -36,6 +36,9 @@ jobs:
       EXTRA_NAMES: ${{ secrets.EXTRA_NAMES }}
       BLOCK_EXTRA: ${{ secrets.BLOCK_EXTRA }}
       DASH_PASSPHRASE: ${{ secrets.DASH_PASSPHRASE }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      ALERT_EXTRA: ${{ secrets.ALERT_EXTRA }}
       GH_TOKEN: ${{ github.token }}
       LOOP_MINUTES: ${{ github.event.inputs.loop_minutes || '165' }}
     steps:
