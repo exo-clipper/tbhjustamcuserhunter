@@ -276,10 +276,10 @@
 <script>
 "use strict";
 const SHARDS = 18, PBKF_ITER = 1200000, CARD_CAP = 400, LOG_CAP = 250;
-const SHARD_TRUST_S = 300;   // keep a card while its shard verified it free
-                             // within the last 5 min; past that the shard is
-                             // stalled or paused and its verdicts can't be
-                             // trusted, so its cards step aside
+const SHARD_TRUST_S = 900;   // keep a card while its shard keeps verifying it
+                             // free; a shard that goes silent (throttle pause)
+                             // keeps its cards up to this long, then its
+                             // verdicts can no longer be promised
 const LEGACY_ITER = 120000;  // shim: blobs from a shard still on older code
 const POLL_MS = 12000;       // the feed is a branch, not a Pages build
 const NEW_FOR = 180;         // seconds a find keeps its NEW badge

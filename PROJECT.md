@@ -67,9 +67,10 @@ Phone pushes were removed by choice.
    and never a name Minecraft's profanity filter would refuse. A card stays on
    the board while its shard keeps re-verifying it free (every ~45 s) and is
    removed within about a minute of a check saying it is taken. If a shard
-   cannot check at all (throttle pause), its names step aside once the verdict
-   is older than **5 min** (`PANEL_FRESH`), because the system can no longer
-   promise them — the exporter stops publishing them at the same threshold.
+   cannot check at all (throttle pause), the card's verdict simply ages: it
+   stays published up to **15 min** (`PANEL_FRESH`) so a 5-10 min pause does
+   not empty the board, then steps aside because the system can no longer
+   promise it — the exporter stops publishing at the same threshold.
 
 ### Why some free-looking names don't show immediately
 

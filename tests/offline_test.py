@@ -223,7 +223,7 @@ def test_exporter() -> list[str]:
     st.conn.execute(
         "UPDATE names SET available = 1, last_checked = ?, changed_at = ? "
         "WHERE name = 'stalefree'",
-        (now - 400, now - 400),
+        (now - 1000, now - 1000),
     )
     st.conn.commit()
     stale = build_payload(st, 3)
@@ -335,7 +335,7 @@ def test_feed() -> list[str]:
     st.conn.execute(
         "UPDATE names SET available = 1, last_checked = ?, changed_at = ? "
         "WHERE name = 'oldfree'",
-        (now - 400, now - 400),
+        (now - 1000, now - 1000),
     )
     st.log_event("minecraft", "zelda", "claimable (verified via history)")
     st.log_event("minecraft", "shag", "claimable (verified via history)")

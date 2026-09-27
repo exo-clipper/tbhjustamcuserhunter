@@ -14,12 +14,12 @@ FREE_RECHECK = 45.0    # names marked free are re-verified at least this often,
 PROBE_EVERY = 900.0    # re-probe unknown-history names every 15 min
 
 # --- panel freshness -----------------------------------------------------------
-# The board must never show a name the user cannot claim. A "free" verdict is
-# only published while it is fresh enough to trust (PANEL_FRESH); once a check
-# says a name is taken it leaves the payload immediately, so the panel drops it
-# within roughly a minute. If a shard cannot check at all (throttle pause),
-# its verdicts age out after the same window and its names step aside.
-PANEL_FRESH = 300.0
+# A card stays on the board while its name keeps being verified free (every
+# ~45s), and leaves within about a minute of a check saying it is taken. If a
+# shard cannot check at all (throttle pause), the card's verdict simply ages:
+# it stays published up to PANEL_FRESH so a 5-10 min pause does not empty the
+# board, then steps aside because the system can no longer promise it.
+PANEL_FRESH = 900.0
 
 # --- mojang name lifecycle ---------------------------------------------------
 COOLDOWN = 37 * 86400.0  # dropped names are locked for exactly 37 days
